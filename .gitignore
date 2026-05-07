@@ -8,12 +8,23 @@ __pycache__/
 venv/
 env/
 
-# Data (large files)
-data/raw/*
-data/processed/*
-!data/raw/.gitkeep
-!data/processed/.gitkeep
-!data/README.md
+# Data: exclude large satellite/binary files (>50MB per CLAUDE.md)
+# Small tabular data (CSV, Parquet) ARE committed
+data/raw/**/*.nc
+data/raw/**/*.h5
+data/raw/**/*.hdf5
+data/raw/**/*.npy
+data/raw/**/*.tif
+data/raw/**/*.tiff
+data/raw/**/*.zip
+data/raw/**/*.npz
+data/processed/**/*.nc
+data/processed/**/*.h5
+data/processed/**/*.npy
+data/processed/**/*.tif
+data/processed/**/*.npz
+# Manually downloaded files stay local (user downloads these separately)
+data/Manually\ Download/
 
 # Model checkpoints
 experiments/checkpoints/*
@@ -37,7 +48,11 @@ Thumbs.db
 
 # Credentials
 .env
-*.json
+*credentials*.json
+*secret*.json
+*service_account*.json
+# Allow data metadata and configs
+!data/**/*.json
 !**/configs/*.json
 
 # LaTeX build artifacts

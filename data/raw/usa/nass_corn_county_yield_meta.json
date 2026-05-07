@@ -1,0 +1,48 @@
+{
+  "downloaded_at": "2026-05-07T19:01:25.574322",
+  "source": "USDA NASS QuickStats API",
+  "endpoint": "https://quickstats.nass.usda.gov/api/api_GET/",
+  "query_params": {
+    "commodity_desc": "CORN",
+    "statisticcat_desc": "YIELD",
+    "agg_level_desc": "COUNTY",
+    "unit_desc": "BU / ACRE",
+    "domain_desc": "TOTAL",
+    "year_range": "2003\u20132023"
+  },
+  "raw_record_count": 45215,
+  "clean_record_count": 41349,
+  "counties": 2280,
+  "states": 41,
+  "years": [
+    2003,
+    2004,
+    2005,
+    2006,
+    2007,
+    2008,
+    2009,
+    2010,
+    2011,
+    2012,
+    2013,
+    2014,
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+  ],
+  "unit_conversion": "yield_ton_ha = yield_bu_acre \u00d7 0.06277",
+  "notes": [
+    "(D) values suppressed by NASS for confidentiality \u2192 NaN",
+    "OTHER (COMBINED) COUNTIES rows excluded",
+    "Full 5-digit FIPS code = state_fips (2) + county_code (3)"
+  ]
+}
