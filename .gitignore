@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+
+# Data (large files)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/README.md
+
+# Model checkpoints
+experiments/checkpoints/*
+!experiments/checkpoints/.gitkeep
+
+# Experiment logs (keep small CSVs only)
+experiments/logs/*.log
+wandb/
+
+# Notebook outputs
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Credentials
+.env
+*.json
+!**/configs/*.json
+
+# LaTeX build artifacts
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.synctex.gz
+paper/*.bbl
+paper/*.blg
+paper/*.toc
