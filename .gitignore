@@ -18,6 +18,7 @@ data/raw/**/*.tif
 data/raw/**/*.tiff
 data/raw/**/*.zip
 data/raw/**/*.npz
+data/raw/modis/*.csv
 data/processed/**/*.nc
 data/processed/**/*.h5
 data/processed/**/*.npy

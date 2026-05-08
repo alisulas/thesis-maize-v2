@@ -89,6 +89,7 @@ class MaizeDataset(Dataset):
             return
 
         mask = np.isin(years_all, year_list)
+        mask &= y_all > 0.1   # drop anomalous zero-yield samples (206 in USA)
         self.X = X_all[mask]  # (N_split, 46, 10)
         self.y = y_all[mask]  # (N_split,)
 

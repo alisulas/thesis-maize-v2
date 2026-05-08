@@ -42,7 +42,10 @@ DRIVE_FOLDER = "thesis_maize_gee"
 
 MOD09A1 = "MODIS/061/MOD09A1"
 MYD11A2 = "MODIS/061/MYD11A2"
+MCD12Q1 = "MODIS/061/MCD12Q1"
 GAUL_L1 = "FAO/GAUL/2015/level1"
+
+DRIVE_FOLDER_V2 = "thesis_maize_gee_v2"  # output folder for cropland-masked extraction
 
 SR_BANDS = ["sur_refl_b01", "sur_refl_b02", "sur_refl_b03",
             "sur_refl_b04", "sur_refl_b05", "sur_refl_b06", "sur_refl_b07"]
@@ -67,6 +70,20 @@ COUNTRIES: dict[str, dict] = {
         "years": list(range(2021, 2024)),
     },
 }
+
+
+def get_cropland_mask(year: int) -> ee.Image:
+    """MCD12Q1 IGBP class 12 (Croplands) binary mask for a given year.
+
+    MCD12Q1 is available up to ~2022 in GEE; years beyond that use 2022.
+    """
+    lc_year = min(year, 2022)
+    lc = (
+        ee.ImageCollection(MCD12Q1)
+        .filter(ee.Filter.calendarRange(lc_year, lc_year, "year"))
+        .first()
+    )
+    return lc.select("LC_Type1").eq(12)
 
 
 def preprocess_sr(image: ee.Image) -> ee.Image:
@@ -136,6 +153,7 @@ def build_export_task(
     country_iso: str,
     gaul_name: str,
     year: int,
+    use_cropland_mask: bool = False,
 ) -> ee.batch.Task:
     """Build one GEE export task for country × year.
 
@@ -143,6 +161,7 @@ def build_export_task(
         country_iso: ISO3 code (e.g. 'IDN').
         gaul_name: FAO GAUL country name (e.g. 'Indonesia').
         year: Calendar year.
+        use_cropland_mask: If True, apply MCD12Q1 class-12 mask before aggregation.
 
     Returns:
         GEE export task (not yet started).
@@ -152,6 +171,14 @@ def build_export_task(
     )
 
     col = get_joined_collection(year)
+
+    if use_cropland_mask:
+        crop_mask = get_cropland_mask(year)
+        col = col.map(lambda img: img.updateMask(crop_mask))
+
+    folder = DRIVE_FOLDER_V2 if use_cropland_mask else DRIVE_FOLDER
+    iso_lower = country_iso.lower()
+    desc = f"modis_{iso_lower}_v2_{year}" if use_cropland_mask else f"modis_{iso_lower}_{year}"
 
     def reduce_to_provinces(image: ee.Image) -> ee.FeatureCollection:
         date_str = image.date().format("YYYY-MM-dd")
@@ -171,13 +198,11 @@ def build_export_task(
 
     result = col.map(reduce_to_provinces).flatten()
 
-    # Rename bands to clean names
-    # Note: GEE FeatureCollection properties will include band names as-is
     task = ee.batch.Export.table.toDrive(
         collection=result,
-        description=f"modis_{country_iso.lower()}_{year}",
-        folder=DRIVE_FOLDER,
-        fileNamePrefix=f"modis_{country_iso.lower()}_{year}",
+        description=desc,
+        folder=folder,
+        fileNamePrefix=f"modis_{iso_lower}_{year}",
         fileFormat="CSV",
         selectors=[
             "ADM1_CODE", "ADM1_NAME", "country", "year", "date",
@@ -190,14 +215,19 @@ def build_export_task(
     return task
 
 
-def main(test_mode: bool = False) -> None:
+def main(test_mode: bool = False, use_cropland_mask: bool = False) -> None:
     logger.info(f"Initializing GEE project: {GEE_PROJECT}")
     ee.Initialize(project=GEE_PROJECT)
 
+    if use_cropland_mask:
+        logger.info("Cropland mask ENABLED → MCD12Q1 IGBP class 12")
+        logger.info(f"Output Drive folder: {DRIVE_FOLDER_V2}")
+    else:
+        logger.info(f"Output Drive folder: {DRIVE_FOLDER}")
+
     if test_mode:
-        # Test: IDN 2022 only (smallest dataset)
         logger.info("=== TEST MODE: IDN 2022 only ===")
-        task = build_export_task("IDN", "Indonesia", 2022)
+        task = build_export_task("IDN", "Indonesia", 2022, use_cropland_mask=use_cropland_mask)
         task.start()
         logger.info(f"Task submitted: {task.id}")
         logger.info("Polling every 30s (Ctrl+C to stop and monitor manually)...")
@@ -217,18 +247,17 @@ def main(test_mode: bool = False) -> None:
     for country_iso, cfg in COUNTRIES.items():
         gaul_name = cfg["gaul_name"]
         for year in cfg["years"]:
-            task = build_export_task(country_iso, gaul_name, year)
+            task = build_export_task(country_iso, gaul_name, year, use_cropland_mask=use_cropland_mask)
             task.start()
             tasks.append((country_iso, year, task))
             logger.info(f"  Submitted: {country_iso} {year} → task {task.id}")
-            time.sleep(0.5)  # avoid rate limiting
+            time.sleep(0.5)
 
     logger.info(f"\nTotal tasks submitted: {len(tasks)}")
     logger.info(f"Monitor at: https://code.earthengine.google.com/tasks")
-    logger.info(f"Output Drive folder: {DRIVE_FOLDER}/")
 
-    # Save task IDs for later monitoring
-    task_log = PROJECT_ROOT / "experiments" / "logs" / "gee_tasks_asean.csv"
+    suffix = "_v2" if use_cropland_mask else ""
+    task_log = PROJECT_ROOT / "experiments" / "logs" / f"gee_tasks_asean{suffix}.csv"
     task_log.parent.mkdir(parents=True, exist_ok=True)
     rows = [{"country": c, "year": y, "task_id": t.id, "status": "SUBMITTED"}
             for c, y, t in tasks]
@@ -240,5 +269,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--test", action="store_true",
                         help="Test mode: submit IDN 2022 only and poll")
+    parser.add_argument("--masked", action="store_true",
+                        help="Apply MCD12Q1 cropland mask; outputs to thesis_maize_gee_v2")
     args = parser.parse_args()
-    main(test_mode=args.test)
+    main(test_mode=args.test, use_cropland_mask=args.masked)
