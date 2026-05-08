@@ -1,0 +1,31 @@
+experiment:
+  name: usa_lstm_v2
+  country: usa
+  model: lstm
+
+model:
+  n_features: 10
+  cnn_channels: 64   # unused for lstm
+  hidden_size: 512   # increased from 256
+  n_layers: 2
+  dropout: 0.3
+
+training:
+  epochs: 200
+  batch_size: 256
+  lr: 5.0e-4
+  weight_decay: 1.0e-4
+  lr_scheduler: cosine
+  patience: 30        # increased from 20
+  seed: 42
+
+data:
+  year_splits:
+    train: [2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
+            2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020]
+    val:   [2021, 2022]
+    test:  [2023]
+
+output:
+  checkpoint_dir: experiments/checkpoints/usa_lstm_v2
+  log_dir: experiments/logs

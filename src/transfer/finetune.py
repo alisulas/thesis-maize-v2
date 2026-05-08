@@ -55,6 +55,14 @@ FINETUNE_CFG = {
     "seed":            42,
 }
 
+# Countries with no val set get capped epochs to prevent overfitting.
+# THA: 2 train years (~86 samples), no val → very few epochs.
+# IDN: 4 train years (~130 samples), no val → moderate cap.
+COUNTRY_EPOCH_OVERRIDES: dict[str, dict] = {
+    "tha": {"n_frozen_epochs": 10, "n_full_epochs": 10},
+    "idn": {"n_frozen_epochs": 20, "n_full_epochs": 20},
+}
+
 MODEL_CFG = {
     "n_features":   10,
     "cnn_channels": 64,
@@ -69,18 +77,22 @@ def finetune(country: str, pretrained_path: Path) -> dict:
 
     Returns dict with test metrics for both transfer and scratch baselines.
     """
-    set_seed(FINETUNE_CFG["seed"])
+    # Apply per-country epoch overrides (small datasets without val sets)
+    cfg = {**FINETUNE_CFG, **COUNTRY_EPOCH_OVERRIDES.get(country, {})}
+    set_seed(cfg["seed"])
     device = torch.device(
         "cuda" if torch.cuda.is_available() else
         "mps"  if torch.backends.mps.is_available() else "cpu"
     )
+
     logger.info(f"\n{'='*60}")
     logger.info(f"Fine-tuning on {country.upper()} | device: {device}")
     logger.info(f"Pretrained checkpoint: {pretrained_path}")
+    logger.info(f"  Epochs — frozen: {cfg['n_frozen_epochs']}, full: {cfg['n_full_epochs']}, patience: {cfg['patience']}")
 
     # --- Data -----------------------------------------------------------------
     train_loader, val_loader, test_loader = get_dataloaders(
-        country=country, batch_size=FINETUNE_CFG["batch_size"]
+        country=country, batch_size=cfg["batch_size"]
     )
     n_train = len(train_loader.dataset)
     n_val   = len(val_loader.dataset)
@@ -90,15 +102,17 @@ def finetune(country: str, pretrained_path: Path) -> dict:
 
     # --- Load pretrained weights ---------------------------------------------
     ckpt = torch.load(pretrained_path, map_location=device)
-    # Auto-detect model type from checkpoint path name
-    if "lstm" in str(pretrained_path) and "cnn" not in str(pretrained_path):
-        model = CropYieldLSTM(**{k: v for k, v in MODEL_CFG.items()
+    # Read model config from checkpoint (saved by train.py); fall back to MODEL_CFG
+    saved_model_cfg  = ckpt.get("model_cfg",  MODEL_CFG)
+    saved_model_type = ckpt.get("model_type", "lstm" if "cnn" not in str(pretrained_path) else "cnn_lstm")
+    if saved_model_type == "lstm":
+        model = CropYieldLSTM(**{k: v for k, v in saved_model_cfg.items()
                                   if k in ("n_features", "hidden_size", "n_layers", "dropout")})
     else:
-        model = CropYieldCNNLSTM(**MODEL_CFG)
+        model = CropYieldCNNLSTM(**saved_model_cfg)
     model = model.to(device)
     model.load_state_dict(ckpt["model_state"])
-    logger.info(f"  Loaded pretrained weights (USA epoch {ckpt['epoch']})")
+    logger.info(f"  Loaded pretrained weights (epoch {ckpt['epoch']}, hidden={saved_model_cfg.get('hidden_size', '?')})")
 
     ckpt_dir = PROJECT_ROOT / "experiments" / "checkpoints" / f"finetune_{country}"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -108,16 +122,16 @@ def finetune(country: str, pretrained_path: Path) -> dict:
     best_loss = float("inf")
 
     # --- Phase 1: frozen feature extractor -----------------------------------
-    logger.info(f"\n  Phase 1 — frozen extractor ({FINETUNE_CFG['n_frozen_epochs']} epochs)")
+    logger.info(f"\n  Phase 1 — frozen extractor ({cfg['n_frozen_epochs']} epochs)")
     model.freeze_feature_extractor()
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),
-        lr=FINETUNE_CFG["lr_frozen"],
-        weight_decay=FINETUNE_CFG["weight_decay"],
+        lr=cfg["lr_frozen"],
+        weight_decay=cfg["weight_decay"],
     )
     patience_ctr = 0
 
-    for epoch in range(1, FINETUNE_CFG["n_frozen_epochs"] + 1):
+    for epoch in range(1, cfg["n_frozen_epochs"] + 1):
         t0 = time.time()
         train_loss  = train_epoch(model, train_loader, optimizer, None, device)
         val_metrics = evaluate(model, val_loader, device) if has_val else {"loss": train_loss, "r2": float("nan"), "rmse": float("nan")}
@@ -133,21 +147,21 @@ def finetune(country: str, pretrained_path: Path) -> dict:
             torch.save({"model_state": model.state_dict(), "epoch": epoch}, best_path)
         else:
             patience_ctr += 1
-            if patience_ctr >= FINETUNE_CFG["patience"]:
+            if patience_ctr >= cfg["patience"]:
                 logger.info(f"    Early stop at epoch {epoch}")
                 break
 
     # --- Phase 2: full fine-tuning -------------------------------------------
-    logger.info(f"\n  Phase 2 — full fine-tune ({FINETUNE_CFG['n_full_epochs']} epochs)")
+    logger.info(f"\n  Phase 2 — full fine-tune ({cfg['n_full_epochs']} epochs)")
     model.unfreeze_all()
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=FINETUNE_CFG["lr_full"],
-        weight_decay=FINETUNE_CFG["weight_decay"],
+        lr=cfg["lr_full"],
+        weight_decay=cfg["weight_decay"],
     )
     patience_ctr = 0
 
-    for epoch in range(1, FINETUNE_CFG["n_full_epochs"] + 1):
+    for epoch in range(1, cfg["n_full_epochs"] + 1):
         t0 = time.time()
         train_loss  = train_epoch(model, train_loader, optimizer, None, device)
         val_metrics = evaluate(model, val_loader, device) if has_val else {"loss": train_loss, "r2": float("nan"), "rmse": float("nan")}
@@ -163,7 +177,7 @@ def finetune(country: str, pretrained_path: Path) -> dict:
             torch.save({"model_state": model.state_dict(), "epoch": epoch}, best_path)
         else:
             patience_ctr += 1
-            if patience_ctr >= FINETUNE_CFG["patience"]:
+            if patience_ctr >= cfg["patience"]:
                 logger.info(f"    Early stop at epoch {epoch}")
                 break
 
@@ -175,21 +189,21 @@ def finetune(country: str, pretrained_path: Path) -> dict:
 
     # --- From-scratch baseline ------------------------------------------------
     logger.info("\n  Training from-scratch baseline...")
-    set_seed(FINETUNE_CFG["seed"])
-    if "lstm" in str(pretrained_path) and "cnn" not in str(pretrained_path):
-        scratch_model = CropYieldLSTM(**{k: v for k, v in MODEL_CFG.items()
+    set_seed(cfg["seed"])
+    if saved_model_type == "lstm":
+        scratch_model = CropYieldLSTM(**{k: v for k, v in saved_model_cfg.items()
                                           if k in ("n_features", "hidden_size", "n_layers", "dropout")})
     else:
-        scratch_model = CropYieldCNNLSTM(**MODEL_CFG)
+        scratch_model = CropYieldCNNLSTM(**saved_model_cfg)
     scratch_model = scratch_model.to(device)
     scratch_opt   = torch.optim.AdamW(scratch_model.parameters(),
-                                      lr=FINETUNE_CFG["lr_frozen"],
-                                      weight_decay=FINETUNE_CFG["weight_decay"])
+                                      lr=cfg["lr_frozen"],
+                                      weight_decay=cfg["weight_decay"])
     scratch_best_loss = float("inf")
     scratch_best_path = ckpt_dir / "scratch_best.pt"
     patience_ctr = 0
 
-    for epoch in range(1, FINETUNE_CFG["n_frozen_epochs"] + FINETUNE_CFG["n_full_epochs"] + 1):
+    for epoch in range(1, cfg["n_frozen_epochs"] + cfg["n_full_epochs"] + 1):
         train_loss  = train_epoch(scratch_model, train_loader, scratch_opt, None, device)
         val_metrics = evaluate(scratch_model, val_loader, device) if has_val else {"loss": train_loss, "r2": float("nan"), "rmse": float("nan")}
 
@@ -199,7 +213,7 @@ def finetune(country: str, pretrained_path: Path) -> dict:
             torch.save({"model_state": scratch_model.state_dict()}, scratch_best_path)
         else:
             patience_ctr += 1
-            if patience_ctr >= FINETUNE_CFG["patience"]:
+            if patience_ctr >= cfg["patience"]:
                 break
 
     ckpt_scratch = torch.load(scratch_best_path, map_location=device)

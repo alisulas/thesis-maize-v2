@@ -126,16 +126,47 @@ Model di-fine-tune dengan data ASEAN  ← 126-1.804 data
 
 ### 2.6 Fine-Tuning (2-Phase Strategy)
 
+**Apa itu fine-tuning?**
+
+Fine-tuning adalah proses melanjutkan training model yang sudah dilatih sebelumnya (pretrained) dengan data baru yang berbeda. Analoginya: seperti seorang dokter spesialis jantung yang belajar spesialisasi paru-paru — dia tidak mulai dari nol (tidak perlu belajar anatomi dasar lagi), tapi menyesuaikan keahliannya ke bidang baru.
+
+**Yang di-fine-tune dalam proyek ini:**
+
+Model kita (`CropYieldLSTM`) punya 2 bagian:
+
+```
+┌─────────────────────────────────────────────────┐
+│  LSTM layers (2 layer, hidden=256)              │  ← "Feature extractor"
+│  Fungsi: belajar pola temporal NDVI/LST 46 week │  ← Dilatih di USA (41K data)
+│  Bobot: ~790.000 parameter                      │
+└─────────────────┬───────────────────────────────┘
+                  ↓
+┌─────────────────────────────────────────────────┐
+│  FC Head: Linear(256→64) → ReLU → Linear(64→1) │  ← "Prediction head"
+│  Fungsi: mengubah representasi → angka yield    │  ← ~17.000 parameter
+└─────────────────────────────────────────────────┘
+```
+
+**Yang di-fine-tune = seluruh model**, tapi dengan strategi 2 fase:
+
 **Phase 1 (20 epoch): Frozen LSTM, train head saja**
-- LSTM layer dibekukan (weight tidak berubah)
-- Hanya dense/FC layers yang dilatih
-- LR = 1e-3 (agak besar, karena head diinisialisasi random)
-- **Kenapa:** Cegah head yang random merusak bobot LSTM yang sudah bagus
+- LSTM layer **dibekukan** (weight tidak berubah sama sekali)
+- Hanya FC head yang dilatih dengan lr=1e-3
+- **Kenapa:** Head diinisialisasi random → kalau langsung update LSTM dengan gradient dari head yang kacau, bobot LSTM yang sudah bagus bisa rusak (disebut *catastrophic forgetting*)
 
 **Phase 2 (50 epoch): Unfreeze semua, fine-tune full**
-- Semua layer dilatih
-- LR = 1e-4 (kecil, supaya tidak "melupakan" pengetahuan USA)
-- **Kenapa:** Fase adaptasi halus — sesuaikan representasi ke data ASEAN
+- Semua layer dilatih dengan lr=1e-4 (sangat kecil)
+- **Kenapa:** Sekarang head sudah stabil → aman untuk menyesuaikan LSTM secara halus ke pola data ASEAN (iklim tropis, pola NDVI berbeda)
+
+**Hasil nyata fine-tuning di proyek ini:**
+
+| Negara | Tanpa fine-tune (from scratch) | Dengan fine-tune (transfer) | Keuntungan |
+|--------|-------------------------------|----------------------------|-----------|
+| IDN | R²=0.000 | R²=**0.574** | +0.574 🎉 |
+| VNM | R²=-0.056 | R²=**0.048** | +0.104 ✓ |
+| THA | R²=-0.490 | R²=-2.726 | -2.236 ⚠️ overfit |
+
+IDN mendapat manfaat terbesar karena datanya paling sedikit (128 sampel training) — tanpa pretrained weights, model tidak cukup data untuk belajar apapun.
 
 ### 2.7 Domain Adaptation & DANN
 
