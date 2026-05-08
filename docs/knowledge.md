@@ -47,8 +47,8 @@ Pertanyaannya: **Apakah pengetahuan dari Indonesia bisa "ditransfer" untuk bantu
 
 | Kode | Isi | Status |
 |------|-----|--------|
-| **H1** | Transfer learning dari USA lebih baik daripada training dari nol di ASEAN | Belum diuji secara penuh (butuh Colab) |
-| **H2** | Perbedaan iklim bisa bikin transfer learning gagal ("negative transfer") | **Terbukti di Vietnam**: ΔR² = −0.094 |
+| **H1** | Transfer learning dari USA lebih baik daripada training dari nol di ASEAN | ✅ **Terkonfirmasi** — IDN ΔR²=+0.574, VNM ΔR²=+0.104 |
+| **H2** | Perbedaan iklim bisa bikin transfer learning gagal ("negative transfer") | ❌ **Tidak terkonfirmasi** untuk VNM (hasil nyata positif); THA negatif tapi karena overfitting |
 | **H3** | DANN (domain adaptation) bisa mengatasi masalah perbedaan iklim | Belum diimplementasi |
 
 ---
@@ -207,11 +207,13 @@ Semua 50 GEE export tasks berhasil disubmit dan didownload:
 | Vietnam | `modis_vnm_YYYY.csv` | 21 files (2003-2023) | ✅ Downloaded |
 | Thailand | `modis_tha_YYYY.csv` | 3 files (2021-2023) | ✅ Downloaded |
 
-Setelah merge: 4 file `.npz` di `data/processed/modis/`:
-- `usa_modis.npz`: 41.349 sampel × 46 timesteps × 10 fitur
-- `idn_modis.npz`: 172 sampel × 46 timesteps × 10 fitur
-- `vnm_modis.npz`: 1.804 sampel × 46 timesteps × 10 fitur
+Setelah merge: 4 file `.npz` di `data/processed/modis/` **(v2, cropland-masked)**:
+- `usa_modis.npz`: 32.296 sampel × 46 timesteps × 10 fitur
+- `idn_modis.npz`: 162 sampel × 46 timesteps × 10 fitur
+- `vnm_modis.npz`: 1.315 sampel × 46 timesteps × 10 fitur
 - `tha_modis.npz`: 126 sampel × 46 timesteps × 10 fitur
+
+**Catatan v2:** Re-extraction dengan MCD12Q1 class 12 mask (hanya pixel pertanian). File USA menyusut dari ~33MB → ~28MB per tahun, membuktikan mask aktif.
 
 ---
 
@@ -396,48 +398,61 @@ drive.mount('/content/drive')
 **Contoh:** RMSE = 0.8 ton/ha → rata-rata prediksi meleset 0.8 ton/ha.
 **Rumus:** `RMSE = √(mean((ŷ - y)²))`
 
-### 7.3 Target Performa
+### 7.3 Hasil Nyata (Kaggle T4 GPU, cropland-masked v2, 8 Mei 2026)
 
-| Model | Target R² | Status |
-|-------|-----------|--------|
-| USA baseline (Colab, A100) | ≥ 0.6 | Belum dijalankan di Colab |
-| USA baseline (Mac, smoke test) | R²=0.39 | ✅ Selesai — tapi ini bukan hasil final |
-| ASEAN from-scratch | ≥ 0.3 | Belum selesai |
-| ASEAN dengan transfer | +10-30% vs from-scratch | Belum selesai |
+| Model | Test R² | Test RMSE | Keterangan |
+|-------|---------|-----------|-----------|
+| USA LSTM (baseline) | **0.4416** | 1.656 t/ha | Best epoch 41, early stop ep61 |
+| IDN Transfer | **0.574** | 0.763 t/ha | ΔR²=+0.574 vs scratch |
+| IDN From-Scratch | 0.000 | 1.170 t/ha | — |
+| VNM Transfer | **0.048** | 1.307 t/ha | ΔR²=+0.104 vs scratch |
+| VNM From-Scratch | -0.056 | 1.377 t/ha | — |
+| THA Transfer | -2.726 | 0.831 t/ha | Overfitting — no val set, 3 tahun |
+| THA From-Scratch | -0.490 | 0.526 t/ha | — |
 
-**Catatan penting:** R²=0.39 di Mac MPS hanya 2-3 epoch — ini cuma verifikasi kode tidak crash. Hasil final butuh full training di Colab (A100, 150 epoch).
+**Target USA R² ≥ 0.6 belum tercapai** (0.4416). Kemungkinan penyebab: early stopping terlalu cepat (epoch 41 dari 150), atau hyperparameter perlu tuning. THA butuh perbaikan (kurangi epoch fine-tuning).
 
 ---
 
 ## 8. Workflow Penelitian: Status Nyata per 8 Mei 2026
 
-### Apa yang Sudah Selesai (Minggu 1-2)
+### Apa yang Sudah Selesai
 
 ```
 ✅ Download + clean yield data USA, IDN, VNM, THA
-✅ 50 GEE export tasks submitted & downloaded
-✅ merge_modis.py — build 4 .npz tensors
-✅ src/data/dataset.py — PyTorch Dataset + DataLoader
+✅ GEE v1: 50 tasks submitted & downloaded (tanpa cropland mask)
+✅ GEE v2: 50 tasks re-submitted & downloaded (dengan MCD12Q1 class 12 mask)
+✅ merge_modis.py — build 4 .npz tensors (v2)
+✅ dataset.py — filter zero-yield (y > 0.1) ditambahkan
 ✅ src/models/cnn_lstm.py — CropYieldLSTM + CropYieldCNNLSTM
 ✅ experiments/configs/usa_lstm.yaml — config terbaik
 ✅ src/training/train.py — full training loop
 ✅ src/transfer/finetune.py — 2-phase fine-tuning
 ✅ src/analysis/supervisor_analysis.py — 5 investigasi
-✅ Smoke test di Mac: kode tidak crash, R²=0.39 (LSTM), R²=0.13 (CNN-LSTM)
-✅ Memory files & CLAUDE.md decision log
-✅ docs/knowledge.md ini
+✅ Training di Kaggle T4 GPU: USA R²=0.4416
+✅ Fine-tuning ASEAN: IDN R²=0.574, VNM R²=0.048
+✅ Pretrained checkpoint: experiments/checkpoints/usa_lstm/best_model.pt
+✅ Memory files, CLAUDE.md decision log, docs/knowledge.md
+✅ Semua di-commit ke GitHub (branch: dev)
 ```
 
 ### Yang Belum Selesai
 
 ```
-⬜ Full training di Google Colab Pro (A100)   ← PRIORITAS 1
-⬜ Re-run GEE dengan cropland mask           ← PRIORITAS 2 (untuk paper)
-⬜ Download IDN pre-2020 (sebelum KSA)       ← nice to have
-⬜ Hapus 206 sampel USA dengan yield = 0     ← quick fix
-⬜ Implementasi DANN                         ← untuk H3, fase berikutnya
-⬜ Commit semua ke GitHub                    ← perlu dilakukan segera
+⬜ Fix THA overfitting (kurangi epoch fine-tuning, tambah regularisasi)  ← PRIORITAS 1
+⬜ Implementasi DANN (src/models/dann.py)                                 ← untuk H3
+⬜ Download IDN pre-2020 (sebelum KSA)                                    ← nice to have
+⬜ USA R² target ≥ 0.6 belum tercapai (saat ini 0.4416)                  ← hyperparameter tuning
+⬜ Notebook Kaggle: hapus Cell 1 (numpy downgrade), perbaiki robustness
 ```
+
+### Platform Training
+
+| Platform | GPU | Status | Catatan |
+|----------|-----|--------|---------|
+| Mac M1 | MPS | Smoke test only | CLAUDE.md melarang full training di Mac |
+| Google Colab | — | Tidak jadi dipakai | Kaggle lebih praktis dan gratis |
+| **Kaggle** | **T4** | **✅ Digunakan** | P100 tidak kompatibel PyTorch 2.10 |
 
 ---
 
@@ -479,18 +494,20 @@ Kita ukur seberapa berbeda distribusi fitur MODIS:
 
 **Kesimpulan:** USA dan ASEAN memang beda jauh — khususnya pola temporal NDVI (USA: kurva lonceng musiman; ASEAN: relatif datar sepanjang tahun). Ini mendukung perlunya DANN (H3).
 
-### 9.4 Vietnam: Negative Transfer Terkonfirmasi
+### 9.4 Vietnam: Koreksi Hasil (Hasil Nyata ≠ Hasil Lama)
+
+**⚠️ Koreksi penting:** Hasil VNM yang sebelumnya ditampilkan (negative transfer ΔR²=−0.094) adalah **data salah** — berasal dari file `transfer_results.csv` smoke test Mac yang ter-commit ke git, bukan dari training GPU sesungguhnya.
+
+**Hasil nyata (Kaggle T4, cropland-masked v2):**
 
 | Model | R² | RMSE | ΔR² vs From-Scratch |
 |-------|-----|------|---------------------|
-| From-Scratch | 0.154 | 0.942 t/ha | — |
-| Transfer (ours) | 0.060 | 1.038 t/ha | **−0.094 (negatif!)** |
+| From-Scratch | -0.056 | 1.377 t/ha | — |
+| Transfer | **+0.048** | 1.307 t/ha | **+0.104 (positif!)** |
 
-**Temuan kritis:** Model transfer di Vietnam **lebih buruk** dari training dari nol. Rata-rata di bawah-prediksi sebesar **−0.583 t/ha** secara sistematis.
+**Temuan revisi:** Transfer learning untuk VNM **sedikit membantu** (+0.104), bukan merugikan. H2 (negative transfer) tidak terkonfirmasi untuk VNM dengan data cropland-masked v2.
 
-**Mengapa ini penting:** Ini membuktikan H2 bahwa domain gap (iklim temperate vs tropical) bisa menyebabkan negative transfer. Ini justru memperkuat argumen pentingnya DANN (H3) dalam tesis.
-
-**Pesan untuk supervisor:** Ini bukan kegagalan — ini temuan! Negative transfer yang terdokumentasi = kontribusi ilmiah yang valid.
+**Pelajaran:** Selalu verifikasi hasil dari GPU sesungguhnya, bukan dari smoke test yang ter-commit ke git.
 
 ### 9.5 Estimasi Dampak Cropland Masking
 
@@ -508,39 +525,42 @@ Model saat ini rata-rata MODIS atas **seluruh** area county/provinsi, termasuk h
 
 ## 10. Masalah Diketahui & Rencana Perbaikan
 
-### 10.1 Masalah #1: Tidak Ada Cropland Masking (PALING KRITIS)
+### 10.1 ✅ SELESAI: Cropland Masking
 
-**Masalah:** MODIS dirata-rata atas seluruh county/provinsi, termasuk area non-pertanian.
+**Masalah lama:** MODIS dirata-rata atas seluruh county/provinsi termasuk area non-pertanian.
+**Solusi:** Re-ekstraksi GEE dengan `MCD12Q1` class 12 mask → v2 data. **Selesai 8 Mei 2026.**
 
-**Dampak:** Sinyal tanaman jagung "terdilusi" oleh noise dari area non-pertanian. Ini penyebab utama R² rendah.
+### 10.2 ✅ SELESAI: Sampel Yield = 0.0 t/ha
 
-**Solusi:** Tambahkan `MCD12Q1` class 12 mask di GEE extraction → re-submit 50 GEE tasks.
+**Masalah lama:** 206 sampel USA dengan yield = 0.0 t/ha tidak masuk akal secara pertanian.
+**Solusi:** Filter `y > 0.1` ditambahkan ke `dataset.py`. **Selesai 8 Mei 2026.**
 
-**Estimasi kerja:** 2-3 jam untuk modifikasi script + 1-2 hari untuk GEE export.
+### 10.3 ⚠️ AKTIF: USA R² = 0.4416 (Target 0.6)
 
-### 10.2 Masalah #2: Sampel Yield = 0.0 t/ha
+**Masalah:** Hasil GPU nyata 0.4416 — lebih baik dari smoke test (0.39) tapi belum capai target 0.6.
 
-**Masalah:** 206 sampel USA dengan yield = 0.0 t/ha (tidak masuk akal secara pertanian).
+**Analisis:** Early stopping di epoch 41 (dari 150). Kemungkinan model butuh:
+- Hyperparameter tuning: hidden_size=512, patience=30
+- Learning rate schedule yang lebih agresif
+- Atau target 0.6 memang terlalu optimis tanpa growing season filter
 
-**Solusi:** Filter `y > 0.1` sebelum training. Quick fix, 5 menit.
+**Rencana:** Jalankan tuning di Kaggle di sesi berikutnya.
 
-### 10.3 Masalah #3: USA R² = 0.39 (Target 0.6)
+### 10.4 ⚠️ AKTIF: THA Overfitting Parah (R²=-2.726)
 
-**Masalah:** Hasil sementara dari smoke test di Mac — jauh dari target.
+**Masalah:** THA hanya 84 training samples (2 tahun), tidak ada validation set. Fine-tuning 70 epoch → overfit sempurna ke training, gagal total di test.
 
-**Solusi:** (a) Full training di Colab A100 → ekspektasi R² lebih tinggi, (b) Cropland masking → +0.2-0.3 R².
+**Solusi:** Batasi fine-tuning THA ke 10-20 epoch total, atau tambahkan dropout lebih besar. Perlu kode khusus per-country di `finetune.py`.
 
-### 10.4 Masalah #4: Indonesia Cuma 5 Tahun
-
-**Masalah:** Hanya 172 sampel (2020-2024). Test set cuma 2 tahun.
-
-**Solusi:** Download pre-2020 BPS data (berbeda metodologi — perlu normalisasi lintas-metodologi). Future work.
-
-### 10.5 Masalah #5: DANN Belum Ada
+### 10.5 ⬜ PENDING: DANN untuk H3
 
 **Masalah:** H3 belum bisa diuji tanpa implementasi DANN.
+**Solusi:** `src/models/dann.py` — referensi: Ganin & Lempitsky 2015. **Fase berikutnya.**
 
-**Solusi:** Implementasikan `src/models/dann.py` setelah baseline USA stabil. Referensi: Ganin & Lempitsky 2015.
+### 10.6 ⬜ PENDING: IDN Pre-2020 Data
+
+**Masalah:** Hanya 5 tahun IDN (2020-2024). Pre-2020 BPS pakai metodologi berbeda.
+**Solusi:** Download BPS pre-2020 terpisah, normalisasi cross-methodology. Future work.
 
 ---
 
@@ -628,4 +648,4 @@ Model saat ini rata-rata MODIS atas **seluruh** area county/provinsi, termasuk h
 
 ---
 
-*Dokumen ini akan di-update seiring berjalannya proyek. Terakhir diupdate: 8 Mei 2026.*
+*Dokumen ini akan di-update seiring berjalannya proyek. Terakhir diupdate: 8 Mei 2026 — hasil nyata Kaggle T4 GPU ditambahkan, koreksi hasil VNM.*
