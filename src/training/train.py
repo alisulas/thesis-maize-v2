@@ -216,7 +216,8 @@ def run_training(
         if monitor < best_val_loss:
             best_val_loss = monitor
             patience_ctr  = 0
-            torch.save({"model_state": model.state_dict(), "epoch": epoch, "val_metrics": val_metrics}, checkpoint_path)
+            torch.save({"model_state": model.state_dict(), "epoch": epoch, "val_metrics": val_metrics,
+                        "model_cfg": cfg["model"], "model_type": cfg["experiment"]["model"]}, checkpoint_path)
         else:
             patience_ctr += 1
             if patience_ctr >= patience:

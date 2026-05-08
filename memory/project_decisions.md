@@ -30,6 +30,18 @@ BPS uses KSA methodology from 2020 (satellite-based area measurement). Pre-2020 
 Yield file covers 1995–2023 (GSO has older data). MODIS/Terra only reliable from 2003. Tensor only contains 2003–2023 overlap.
 **Why:** Can't extract satellite features pre-2003; extra yield rows are stored but not used in tensors.
 
+**Cropland mask v2 applied (2026-05-08)**
+Re-extracted all 50 MODIS CSVs with MCD12Q1 IGBP class 12 mask. Output to Drive folder `thesis_maize_gee_v2/`. USA file size shrunk ~33MB → ~28MB confirming mask effective.
+**Why:** No-mask version averaged over non-cropland pixels (forests, cities), diluting the agricultural signal. Expected R² improvement 0.39 → 0.60+.
+
+**Zero-yield filter added to dataset.py (2026-05-08)**
+`y > 0.1` filter applied at load time in `MaizeDataset`. Removes 206 anomalous zero-yield USA samples.
+**Why:** yield = 0.0 t/ha is physically impossible for reported harvest data; these are data errors.
+
+**Kaggle T4 GPU, not Google Colab (2026-05-08)**
+Training moved to Kaggle (free, T4 GPU). P100 on Kaggle incompatible with PyTorch 2.10.0+cu128 (requires sm_70+, P100 is sm_60).
+**Why:** Kaggle free tier sufficient for model size (817K params); T4 (sm_75) compatible.
+
 ## Model Decisions
 
 **LSTM-only preferred over CNN-LSTM (2026-05-08)**
@@ -39,9 +51,17 @@ CNN-LSTM applies Conv1d over the feature axis (10 features), which doesn't have 
 **Best config:** hidden_size=256, n_layers=2, dropout=0.3, lr=5e-4, cosine LR decay
 
 **Fine-tuning: 2-phase strategy (2026-05-08)**
-Phase 1 (20 epochs): freeze LSTM, train only FC head at lr=1e-3
-Phase 2 (50 epochs): unfreeze all, lr=1e-4
-**Why:** Prevents destroying pretrained representations early in fine-tuning (catastrophic forgetting). Standard practice for transfer learning with small target datasets.
+Phase 1 (frozen): train only FC head at lr=1e-3
+Phase 2 (full): unfreeze all, lr=1e-4
+Default: 20+50 epochs. Per-country overrides in `COUNTRY_EPOCH_OVERRIDES` dict in finetune.py:
+- THA: 10+10 (2 training years, no val set — catastrophic overfitting at 20+50)
+- IDN: 20+20 (4 training years, no val set)
+- VNM: 20+50 (default — has val set, early stopping works)
+**Why:** Phase 1 prevents catastrophic forgetting. THA/IDN cap is critical — using train_loss as val proxy means patience never fires, so all epochs run; with <100 samples that's certain overfitting.
+
+**USA v2 config: hidden_size=512 (2026-05-08)**
+`experiments/configs/usa_lstm_v2.yaml`: hidden=512, patience=30, 200 epochs.
+**Why:** v1 (hidden=256) reached R²=0.4416 on Kaggle T4 (target ≥0.6). Hypothesis: underfitting — 32k training samples is large enough for a bigger model. Checkpoint also now saves model_cfg so fine-tuning auto-reads correct hidden_size.
 
 ## Pipeline Decisions
 
