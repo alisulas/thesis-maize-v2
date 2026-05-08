@@ -30,6 +30,18 @@ BPS uses KSA methodology from 2020 (satellite-based area measurement). Pre-2020 
 Yield file covers 1995–2023 (GSO has older data). MODIS/Terra only reliable from 2003. Tensor only contains 2003–2023 overlap.
 **Why:** Can't extract satellite features pre-2003; extra yield rows are stored but not used in tensors.
 
+**Cropland mask v2 applied (2026-05-08)**
+Re-extracted all 50 MODIS CSVs with MCD12Q1 IGBP class 12 mask. Output to Drive folder `thesis_maize_gee_v2/`. USA file size shrunk ~33MB → ~28MB confirming mask effective.
+**Why:** No-mask version averaged over non-cropland pixels (forests, cities), diluting the agricultural signal. Expected R² improvement 0.39 → 0.60+.
+
+**Zero-yield filter added to dataset.py (2026-05-08)**
+`y > 0.1` filter applied at load time in `MaizeDataset`. Removes 206 anomalous zero-yield USA samples.
+**Why:** yield = 0.0 t/ha is physically impossible for reported harvest data; these are data errors.
+
+**Kaggle T4 GPU, not Google Colab (2026-05-08)**
+Training moved to Kaggle (free, T4 GPU). P100 on Kaggle incompatible with PyTorch 2.10.0+cu128 (requires sm_70+, P100 is sm_60).
+**Why:** Kaggle free tier sufficient for model size (817K params); T4 (sm_75) compatible.
+
 ## Model Decisions
 
 **LSTM-only preferred over CNN-LSTM (2026-05-08)**
