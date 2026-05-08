@@ -47,7 +47,6 @@ Can a deep learning model trained on US county-level maize yield data (data-rich
 - **Version Control**: Git + GitHub
 - **Paper**: LaTeX (IEEE Access template), Obsidian for notes
 - **Package Manager**: uv (preferred) 
-- **Virtual Environment**: `.venv/` (uv)
 
 
 
@@ -171,6 +170,11 @@ When making non-trivial decisions, append to this section with date and rational
 
 - **[YYYY-MM-DD]** Source country: USA chosen over Brazil despite higher domain gap risk. Rationale: data cleanliness, paper precedent, supervisor preference.
 - **[YYYY-MM-DD]** Reframed thesis title: "Data-Sparse" → "Data-Limited" to be more accurate.
+- **[2026-05-08]** EVI dropped from feature set (F=10, not 11). GEE mean aggregation causes EVI denominator near-zero overflow (values ±1e11). Re-extraction with server-side clip is the proper fix but deferred.
+- **[2026-05-08]** No cropland masking in current GEE extraction. MODIS mean covers entire county/province. Known cause of low R² (~0.39 vs target 0.6). Fix: re-run GEE with MCD12Q1 class 12 mask. Deferred to next GEE cycle.
+- **[2026-05-08]** Model choice: CropYieldLSTM preferred over CropYieldCNNLSTM. LSTM R²=0.39 vs CNN-LSTM R²=0.13 on Mac sanity check. CNN over 10 scalar features has no physical meaning unlike original You et al. 2017 (32-bin histograms). Best config: hidden=256, n_layers=2, dropout=0.3, lr=5e-4.
+- **[2026-05-08]** IDN MODIS extracted 2020–2024 only (5 years). Pre-2020 BPS data uses different methodology; pre-2020 MODIS extraction deferred until pre-2020 yield data is downloaded.
+- **[2026-05-08]** GAUL 2015 boundaries accepted with known gaps: 4 new Papua provinces (split 2022) + Kalimantan Utara not in GAUL 2015. 33/38 IDN provinces covered. Acceptable for MVP.
 
 ## Out-of-Bounds Behaviors for Claude Code
 
