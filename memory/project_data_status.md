@@ -75,11 +75,11 @@ type: project
 
 ## Pending / Blockers
 
-1. **THA overfitting fix** — no val set + 70 fine-tuning epochs → R²=-2.726; fix: reduce epochs or add dropout
-2. **DANN implementation** — for H3 (`src/models/dann.py`)
-3. **IDN pre-2020 BPS data** — separate BPS table download
-4. **Notebook cleanup** — remove Cell 1 (numpy kill), improve robustness
-5. **wandb integration** — not yet wired into train.py
+1. **USA v2 training (NOT YET RUN)** — `usa_lstm_v2.yaml` created (hidden=512, patience=30). Run on Kaggle T4 next session. Expected: R² > 0.4416, hopefully ≥0.6.
+2. **THA re-fine-tune (NOT YET RUN)** — `COUNTRY_EPOCH_OVERRIDES` in finetune.py caps THA at 10+10 epochs. Need to re-run after USA v2 checkpoint is ready.
+3. **DANN implementation** — for H3 (`src/models/dann.py`). Not started.
+4. **IDN pre-2020 BPS data** — separate BPS table download. Low priority.
+5. **wandb integration** — not yet wired into train.py.
 
 ## Kaggle Setup (working config)
 

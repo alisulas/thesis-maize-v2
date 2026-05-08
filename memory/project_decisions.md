@@ -51,9 +51,17 @@ CNN-LSTM applies Conv1d over the feature axis (10 features), which doesn't have 
 **Best config:** hidden_size=256, n_layers=2, dropout=0.3, lr=5e-4, cosine LR decay
 
 **Fine-tuning: 2-phase strategy (2026-05-08)**
-Phase 1 (20 epochs): freeze LSTM, train only FC head at lr=1e-3
-Phase 2 (50 epochs): unfreeze all, lr=1e-4
-**Why:** Prevents destroying pretrained representations early in fine-tuning (catastrophic forgetting). Standard practice for transfer learning with small target datasets.
+Phase 1 (frozen): train only FC head at lr=1e-3
+Phase 2 (full): unfreeze all, lr=1e-4
+Default: 20+50 epochs. Per-country overrides in `COUNTRY_EPOCH_OVERRIDES` dict in finetune.py:
+- THA: 10+10 (2 training years, no val set — catastrophic overfitting at 20+50)
+- IDN: 20+20 (4 training years, no val set)
+- VNM: 20+50 (default — has val set, early stopping works)
+**Why:** Phase 1 prevents catastrophic forgetting. THA/IDN cap is critical — using train_loss as val proxy means patience never fires, so all epochs run; with <100 samples that's certain overfitting.
+
+**USA v2 config: hidden_size=512 (2026-05-08)**
+`experiments/configs/usa_lstm_v2.yaml`: hidden=512, patience=30, 200 epochs.
+**Why:** v1 (hidden=256) reached R²=0.4416 on Kaggle T4 (target ≥0.6). Hypothesis: underfitting — 32k training samples is large enough for a bigger model. Checkpoint also now saves model_cfg so fine-tuning auto-reads correct hidden_size.
 
 ## Pipeline Decisions
 

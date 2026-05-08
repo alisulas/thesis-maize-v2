@@ -175,6 +175,10 @@ When making non-trivial decisions, append to this section with date and rational
 - **[2026-05-08]** Model choice: CropYieldLSTM preferred over CropYieldCNNLSTM. LSTM R²=0.39 vs CNN-LSTM R²=0.13 on Mac sanity check. CNN over 10 scalar features has no physical meaning unlike original You et al. 2017 (32-bin histograms). Best config: hidden=256, n_layers=2, dropout=0.3, lr=5e-4.
 - **[2026-05-08]** IDN MODIS extracted 2020–2024 only (5 years). Pre-2020 BPS data uses different methodology; pre-2020 MODIS extraction deferred until pre-2020 yield data is downloaded.
 - **[2026-05-08]** GAUL 2015 boundaries accepted with known gaps: 4 new Papua provinces (split 2022) + Kalimantan Utara not in GAUL 2015. 33/38 IDN provinces covered. Acceptable for MVP.
+- **[2026-05-08]** Cropland mask v2 applied (MCD12Q1 class 12). All 50 GEE exports re-run to Drive folder `thesis_maize_gee_v2/`. USA file shrunk ~33MB → ~28MB. v2 tensors now in `data/processed/modis/`.
+- **[2026-05-08]** Real USA training on Kaggle T4: R²=0.4416 (below target 0.6). Root cause: hidden_size=256 may underfit 32k samples. v2 config (hidden=512, patience=30) created at `experiments/configs/usa_lstm_v2.yaml` to test next.
+- **[2026-05-08]** THA overfitting fix: `COUNTRY_EPOCH_OVERRIDES` added to `finetune.py`. THA capped at 10+10 epochs (was 20+50) because no val set + only 2 training years (~86 samples). IDN capped at 20+20. Checkpoint now saves model_cfg so hidden_size auto-matches on load.
+- **[2026-05-08]** Transfer learning results (Kaggle T4 v1 run): IDN R²=0.574 (transfer) vs 0.000 (scratch) → H1 strongly confirmed. VNM R²=0.048 (transfer) vs −0.056 (scratch) → H1 weakly confirmed. THA R²=−2.726 due to overfitting (fixed above). H2 not confirmed for VNM.
 
 ## Out-of-Bounds Behaviors for Claude Code
 
