@@ -7,62 +7,68 @@ type: project
 ## Pipeline Flow
 
 ```
-GEE extraction → raw CSVs → merge_modis.py → .npz tensors → dataset.py → train.py / finetune.py
-Yield download  → parquet/CSV ↗
+GEE extraction → raw CSVs → 03_merge_usa.py → usa_modis.npz → 04_dataset.py → 05_train_usa.py
+Yield download  → parquet ↗
 ```
 
-## Source Files
+## Notebooks (urutan proses)
 
-### Data scripts (`src/data/`)
+| Notebook | Fungsi | Script .py yang di-mirror |
+|----------|--------|--------------------------|
+| `00_usa_download_nass.ipynb` | Download + EDA yield USA dari NASS API | `src/data/00_download_yield_usa.py` |
+| `01_usa_clean_yield.ipynb` | Cleaning yield USA step-by-step | (terintegrasi di atas) |
+| `01b_idn_clean_yield.ipynb` | Cleaning yield IDN dari BDSP | — |
+| `02_extract_gee.ipynb` | Setup + submit GEE extraction job | — |
+| `03_merge_modis.ipynb` | Walkthrough merge MODIS + yield | `src/data/03_merge_usa.py` |
+| `03b_explore_tensor.ipynb` | Validasi usa_modis.npz (6 kriteria) | — |
+| `04_dataset.ipynb` | Walkthrough MaizeDataset (bisa skip) | `src/data/04_dataset.py` |
+| `05_train_usa.ipynb` | Demo training 3 epoch | `src/training/05_train_usa.py` |
+| `05b_train_usa_full.ipynb` | Training penuh 100 epoch di notebook | sama |
+| `06_model.ipynb` | Walkthrough arsitektur CNN-LSTM detail | `src/models/04_cnn_lstm.py` |
+
+## Source Files (`src/`)
+
+### `src/data/`
 | File | Purpose |
 |------|---------|
-| `download_usa.py` | USDA NASS QuickStats API → yield parquet for USA counties |
-| `download_faostat.py` | OWID/FAOSTAT → national reference CSV (4 countries) |
-| `clean_indonesia.py` | Parse BPS wide-format CSV (multi-level headers) → standard yield schema |
-| `clean_vietnam.py` | Clean GSO Vietnam province Excel → standard yield schema |
-| `extract_modis_usa.py` | GEE: MOD09A1 + MYD11A2 → Drive CSV (USA, TIGER counties) |
-| `extract_modis_asean.py` | GEE: MOD09A1 + MYD11A2 → Drive CSV (IDN/VNM/THA, GAUL L1) |
-| `merge_modis.py` | 50 raw CSVs + yield files → 4 .npz tensors with region name mapping |
-| `dataset.py` | `MaizeDataset` (PyTorch Dataset), z-score normalization, `get_dataloaders()` |
+| `00_download_yield_usa.py` | USDA NASS QuickStats API → `yield_usa_2003_2023.parquet` |
+| `03_merge_usa.py` | `modis_usa_*.csv` + yield parquet → `usa_modis.npz` |
+| `04_dataset.py` | `MaizeDataset` (z-score normalization, temporal split), `get_dataloaders()` |
 
-### Models (`src/models/`)
+### `src/models/`
 | File | Purpose |
 |------|---------|
-| `cnn_lstm.py` | `CropYieldCNNLSTM` (Conv1d + LSTM) and `CropYieldLSTM` (LSTM-only). Both have `freeze_feature_extractor()` / `unfreeze_all()` for fine-tuning. |
+| `04_cnn_lstm.py` | `CropYieldCNNLSTM` dan `CropYieldLSTM`. Keduanya punya `freeze_feature_extractor()` / `unfreeze_all()`. Diimport via `src/models/__init__.py`. |
 
-### Training (`src/training/`)
+### `src/training/`
 | File | Purpose |
 |------|---------|
-| `train.py` | Main training loop: MSELoss, AdamW, cosine LR, early stopping, saves checkpoint + CSV log. Entry: `python src/training/train.py --config experiments/configs/usa_lstm.yaml` |
+| `05_train_usa.py` | Training loop: MSELoss, AdamW, cosine LR, early stopping, checkpoint + CSV log. Entry: `python src/training/05_train_usa.py --config experiments/configs/usa_baseline.yaml` |
 
-### Transfer (`src/transfer/`)
-| File | Purpose |
-|------|---------|
-| `finetune.py` | 2-phase fine-tuning (frozen then full) + from-scratch comparison on same data. Saves to `experiments/logs/transfer_results.csv`. Entry: `python src/transfer/finetune.py --country [idn|vnm|tha|all]` |
+### `src/__init__.py` pattern
+Semua `__init__.py` pakai `importlib.import_module` karena nama file diawali angka (tidak valid sebagai Python identifier biasa).
 
 ## Configs (`experiments/configs/`)
-| File | Model | Key params | Best result |
-|------|-------|-----------|-------------|
-| `usa_baseline.yaml` | CNN-LSTM | hidden=128, lr=1e-3, batch=512 | Test R²=0.13 |
-| `usa_lstm.yaml` | LSTM-only | hidden=256, lr=5e-4, batch=256 | Test R²=0.39 ← use this |
 
-## Key Constants (hardcoded, consistent across scripts)
+| File | Model | Key params | Status |
+|------|-------|-----------|--------|
+| `usa_baseline.yaml` | CNN-LSTM | hidden=128, cnn_ch=64, lr=1e-3, batch=512, patience=15 | ✅ Dipakai — belum dijalankan penuh |
+
+## Key Constants
+
 - `N_FEATURES = 10`: [b01,b02,b03,b04,b05,b06,b07,ndvi,LST_Day_1km,LST_Night_1km]
 - `N_TIMESTEPS = 46`: 8-day MODIS composites per year
-- `GEE_PROJECT = "alamat-413120"`
-- `DRIVE_FOLDER = "thesis_maize_gee"`
-- `MODEL_CFG` in finetune.py must match the pretrained checkpoint's architecture (currently hidden_size=256, matches usa_lstm.yaml)
+- `GEE_PROJECT = "alamat-413120"` | `DRIVE_FOLDER = "thesis_maize_gee"`
 
-## Collab Training Setup (not yet done)
-```python
-# In Colab:
-from google.colab import drive; drive.mount('/content/drive')
-!git clone <repo> /content/thesis_maize && cd /content/thesis_maize
-!pip install -r requirements.txt
-# Copy raw MODIS CSVs from Drive:
-!cp /content/drive/MyDrive/thesis_maize_gee/modis_*.csv data/raw/modis/
-# Commit yield parquet/CSVs to git first so they're in the clone
-!python src/data/merge_modis.py
-!python src/training/train.py --config experiments/configs/usa_lstm.yaml
-!python src/transfer/finetune.py --country all
+## Training: Cara Menjalankan
+
+```bash
+# Training penuh (DIREKOMENDASIKAN — aman dari Jupyter mati)
+python src/training/05_train_usa.py --config experiments/configs/usa_baseline.yaml
+
+# Demo 3 epoch (verifikasi pipeline saja)
+# Buka notebooks/05_train_usa.ipynb → Run All
+
+# Training penuh di notebook (risiko: Jupyter mati → training stop)
+# Buka notebooks/05b_train_usa_full.ipynb → Run All
 ```

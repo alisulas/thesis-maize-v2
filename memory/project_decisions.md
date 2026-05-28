@@ -15,20 +15,23 @@ MODIS features averaged over entire county/province. Literature always applies c
 **Why:** Missed in initial GEE script design. Fix requires re-running 50 GEE export tasks.
 
 **GAUL 2015 accepted despite missing new Papua provinces (2026-05-08)**
-4 new Indonesian provinces (Papua Barat Daya IDN-92, Papua Selatan IDN-95, Papua Tengah IDN-96, Papua Pegunungan IDN-97) split from Papua in 2022. GAUL 2015 doesn't have them. Kalimantan Utara (IDN-65) also missing.
-**Why:** These 5 provinces have minimal corn production. Acceptable loss for MVP; 33/38 provinces covered.
+4 new Indonesian provinces (Papua Barat Daya, Papua Selatan, Papua Tengah, Papua Pegunungan) split dari Papua tahun 2022. GAUL 2015 tidak punya mereka. Kalimantan Utara juga missing.
+**Why:** Provinsi-provinsi ini produksi jagungnya minimal. Acceptable loss; mayoritas kabupaten tetap tercakup.
 
-**Ha Tay (VNM) dropped (2026-05-08)**
-GAUL 2015 has Ha Tay as a province but it was merged into Ha Noi in 2008. GSO yield data doesn't have it separately. Rows with Ha Tay MODIS data discarded.
-**Why:** No corresponding yield label possible; can't construct valid training sample.
+**IDN data upgraded to kabupaten level 2003–2025 (2026-05-21)**
+User obtained full BPS kabupaten-level yield data from 2003–2025 (~514 kabupaten). This replaces old province-level data (2020–2024 only, 38 provinces, 162 tensor samples). Kabupaten (district) is comparable to USA county in granularity.
+**Why:** More data (10k+ vs 162 samples), longer time series (23 vs 5 years), better spatial resolution → stronger training signal for transfer learning.
+**Impact:** MODIS must be re-extracted using GAUL ADM2 boundaries for Indonesia 2003–2025. idn_modis.npz will be rebuilt.
 
-**IDN yield only 2020–2024 (2026-05-08)**
-BPS uses KSA methodology from 2020 (satellite-based area measurement). Pre-2020 BPS data uses "eye estimate" methodology — different enough to be treated as a separate dataset. MODIS extracted for 2020–2024 to match.
-**Why:** Mixing methodologies without correction would add noise. Pre-2020 download is future work.
+**NASS `prodn_practice_desc` filtered to ALL PRODUCTION PRACTICES (2026-05-21)**
+NASS reports corn yield with 3 production practices: ALL, IRRIGATED, NON-IRRIGATED. Query didn't filter → 2,578 county-year pairs had duplicates. Fix: keep only `ALL PRODUCTION PRACTICES` (weighted average of irrigated + non-irrigated). This is the official USDA county-level yield figure.
+**Why:** IRRIGATED and NON-IRRIGATED are subset breakdowns of the SAME county-year, not independent samples. Keeping all 3 inflates sample count and confuses the model.
+**Impact:** USA yield data reduced from 41,349 → 34,180 rows (2,272 counties). 218 yield=0 rows (2003–2009 only) also converted to NaN.
 
-**VNM yield 1995–2023 but MODIS only 2003–2023**
-Yield file covers 1995–2023 (GSO has older data). MODIS/Terra only reliable from 2003. Tensor only contains 2003–2023 overlap.
-**Why:** Can't extract satellite features pre-2003; extra yield rows are stored but not used in tensors.
+**Yield=0 converted to NaN in USA cleaning (2026-05-21)**
+218 rows with exact yield=0.0 t/ha found — only years 2003–2009. Not agronomically plausible (county with zero corn wouldn't be in NASS). Likely measurement/reporting artifact.
+**Why:** Zero yield incorrectly trains model to predict 0 for certain conditions; converting to NaN excludes these from loss computation.
+**Impact:** 218 rows (0.6%) have NaN yield. Concentrated in early years only — after 2009, 0% missing.
 
 **Cropland mask v2 applied (2026-05-08)**
 Re-extracted all 50 MODIS CSVs with MCD12Q1 IGBP class 12 mask. Output to Drive folder `thesis_maize_gee_v2/`. USA file size shrunk ~33MB → ~28MB confirming mask effective.
@@ -44,11 +47,11 @@ Training moved to Kaggle (free, T4 GPU). P100 on Kaggle incompatible with PyTorc
 
 ## Model Decisions
 
-**LSTM-only preferred over CNN-LSTM (2026-05-08)**
-CropYieldLSTM (R²=0.39) outperformed CropYieldCNNLSTM (R²=0.13) on Mac test.
-CNN-LSTM applies Conv1d over the feature axis (10 features), which doesn't have the same spatial meaning as over histogram bins (original You et al. 2017 used 32-bin histograms). With scalar mean features, CNN is applying arbitrary linear combinations of spectral bands without clear physical meaning.
-**Why:** LSTM directly processes the time series; simpler is better given the small feature dimension.
-**Best config:** hidden_size=256, n_layers=2, dropout=0.3, lr=5e-4, cosine LR decay
+**Model aktif: CNN-LSTM (usa_baseline.yaml) — belum ada hasil final (2026-05-28)**
+Smoke test lama menunjukkan LSTM-only (R²=0.39) > CNN-LSTM (R²=0.13), tapi smoke test itu pakai data lama (tensor yang sudah diperbaiki) dan tanpa cropland mask. Belum bisa dijadikan kesimpulan.
+Training penuh dengan data baru (33,962 sampel, usa_modis.npz fixed) belum dijalankan.
+**Config aktif:** `usa_baseline.yaml` — CNN-LSTM, hidden=128, cnn_ch=64, lr=1e-3, batch=512
+**Status:** Menunggu training penuh. Update bagian ini setelah hasil R² test tersedia.
 
 **Fine-tuning: 2-phase strategy (2026-05-08)**
 Phase 1 (frozen): train only FC head at lr=1e-3
@@ -66,15 +69,14 @@ Default: 20+50 epochs. Per-country overrides in `COUNTRY_EPOCH_OVERRIDES` dict i
 ## Pipeline Decisions
 
 **One .npz per country (not one big tensor)**
-Separate files: usa_modis.npz, idn_modis.npz, vnm_modis.npz, tha_modis.npz
+Separate files: usa_modis.npz, idn_modis.npz
 **Why:** USA tensor is ~300MB compressed; loading all countries at once wastes memory. Each dataset has different normalization stats (computed per-split).
 
 **Z-score normalization computed from training split only**
 Stats (mean, std per feature) computed from training data and stored in MaizeDataset; applied to val/test.
 **Why:** Prevents data leakage from future years into normalization. Critical for temporal splits.
 
-**GEOID as region_id for USA, IDN-XX for Indonesia**
+**GEOID as region_id for USA, BPS kode for Indonesia**
 USA: 5-digit FIPS (state_fips + county_fips, zero-padded to 5 chars) = TIGER GEOID → direct join.
-IDN: "IDN-" + 2-digit BPS province code (e.g., IDN-11 = Aceh).
-VNM/THA: use normalized province name as join key (no stable numeric ID in yield files).
-**Why:** Stable identifiers allow reproducible merges; BPS code is the official Indonesian standard.
+IDN: BPS kabupaten code (numeric, e.g., 1101 = Aceh Selatan) — from BPS data column.
+**Why:** Stable identifiers allow reproducible merges; BPS kabupaten code is the official Indonesian standard for district-level data.

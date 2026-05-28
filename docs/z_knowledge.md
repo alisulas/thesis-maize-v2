@@ -1,34 +1,23 @@
-# Knowledge Base — Transfer Learning for Maize Yield Prediction
 
-Dokumen ini ditulis untuk kamu (peneliti) sebagai referensi belajar. Semua istilah teknis dijelaskan dengan analogi sederhana + definisi formal. **Update terakhir: 8 Mei 2026 — mencakup semua yang sudah kita kerjakan sampai sekarang.**
+# Urutannya
 
----
+Satelit GEE → extract → merge dengan yield → Dataset class → Model → Training
+Urutannya:
 
-## Daftar Isi
+1. extract_modis_usa.py + 02_gee_extraction.ipynb ← mulai sini
+Ini jembatan antara data yield (yang baru kamu pelajari) dengan fitur input model. Kamu perlu paham: fitur apa yang dipakai, time series NDVI/EVI per county itu bentuknya seperti apa, kenapa pakai MODIS.
 
-1. [Apa sih tesis ini sebenarnya?](#1-apa-sih-tesis-ini-sebenarnya)
-2. [Konsep Dasar Wajib Paham](#2-konsep-dasar-wajib-paham)
-3. [Data: Apa saja dan dari mana](#3-data-apa-saja-dan-dari-mana)
-4. [Preprocessing: Data diapakan sebelum training](#4-preprocessing-data-diapakan-sebelum-training)
-5. [Model & Arsitektur](#5-model--arsitektur)
-6. [Training & Transfer Learning](#6-training--transfer-learning)
-7. [Evaluasi: Cara mengukur hasil](#7-evaluasi-cara-mengukur-hasil)
-8. [Workflow Penelitian: Status Nyata per 8 Mei 2026](#8-workflow-penelitian-status-nyata-per-8-mei-2026)
-9. [Hasil Investigasi untuk Supervisor](#9-hasil-investigasi-untuk-supervisor)
-10. [Masalah Diketahui & Rencana Perbaikan](#10-masalah-diketahui--rencana-perbaikan)
-11. [Glosarium Istilah](#11-glosarium-istilah)
+2. merge_modis.py
+Setelah paham yield dan MODIS terpisah, pelajari cara keduanya digabung jadi satu dataset training. Output merge ini adalah input langsung ke model — bentuk arraynya krusial untuk paham arsitektur.
 
----
+3. dataset.py
+PyTorch Dataset class — jembatan antara file data ke training loop. Setelah paham shape data dari merge, baru ini masuk akal.
 
-## 1. Apa sih tesis ini sebenarnya?
+4. cnn_lstm.py → train.py → finetune.py ← ini bagian model/training, pelajari terakhir
+Rekomendasi sekarang: buka 02_gee_extraction.ipynb dulu, bukan extract_modis_usa.py langsung — karena notebook biasanya step-by-step seperti 01_pipeline_usa.ipynb tadi dan lebih mudah diikuti. Baru setelah paham konsepnya, baca script-nya.
 
-### Analogi sederhana
 
-Bayangkan kamu punya teman yang jago nebak harga rumah di Jakarta karena sudah melihat 40.000 data rumah di seluruh Indonesia.
 
-Sekarang kamu minta dia nebak harga rumah di Thailand. Masalahnya:
-- Di Thailand, dia cuma punya 126 contoh rumah (sangat sedikit)
-- Gaya arsitektur, bahan bangunan, dan kondisi pasar di Thailand beda dengan Indonesia
 
 Pertanyaannya: **Apakah pengetahuan dari Indonesia bisa "ditransfer" untuk bantu nebak di Thailand? Atau malah bikin bingung karena kondisinya beda?**
 
@@ -38,17 +27,16 @@ Pertanyaannya: **Apakah pengetahuan dari Indonesia bisa "ditransfer" untuk bantu
 |----------|-----------|
 | **Apa** | Prediksi hasil panen jagung (ton/ha) dari citra satelit |
 | **Sumber (source)** | USA — data banyak (41.349 sampel), level county |
-| **Target** | Indonesia, Vietnam, Thailand — data sedikit, level provinsi |
-| **Masalah** | Target cuma punya 126-1.804 sampel → deep learning biasanya butuh ribuan |
-| **Solusi** | Transfer learning: latih model di USA, lalu "pindahkan" ilmunya ke ASEAN |
-| **Tantangan** | Iklim USA (temperate) vs ASEAN (tropical) beda jauh → model bisa bingung |
+| **Target** | Indonesia — data terbatas, level kabupaten |
+| **Masalah** | Target cuma punya ~514 kabupaten × ~20 tahun → deep learning biasanya butuh lebih banyak |
+| **Solusi** | Transfer learning: latih model di USA, lalu "pindahkan" ilmunya ke Indonesia |
+| **Tantangan** | Iklim USA (temperate) vs Indonesia (tropical) beda jauh → model bisa bingung |
 
 ### Hipotesis (yang sedang diuji)
 
 | Kode | Isi | Status |
 |------|-----|--------|
-| **H1** | Transfer learning dari USA lebih baik daripada training dari nol di ASEAN | ✅ **Terkonfirmasi** — IDN ΔR²=+0.574, VNM ΔR²=+0.104 |
-| **H2** | Perbedaan iklim bisa bikin transfer learning gagal ("negative transfer") | ❌ **Tidak terkonfirmasi** untuk VNM (hasil nyata positif); THA negatif tapi karena overfitting |
+| **H1** | Transfer learning dari USA lebih baik daripada training dari nol di Indonesia | ✅ **Terkonfirmasi** — IDN ΔR²=+0.574 |
 | **H3** | DANN (domain adaptation) bisa mengatasi masalah perbedaan iklim | Belum diimplementasi |
 
 ---
@@ -119,9 +107,9 @@ Model dilatih di USA (41.349 data)    ← 3+ minggu kerja data
         ↓
 Model disimpan sebagai "checkpoint"   ← file experiments/checkpoints/usa_lstm_best.pt
         ↓
-Checkpoint di-load untuk ASEAN        ← via finetune.py
+Checkpoint di-load untuk Indonesia    ← via finetune.py
         ↓
-Model di-fine-tune dengan data ASEAN  ← 126-1.804 data
+Model di-fine-tune dengan data IDN    ← ~514 kabupaten × 20 tahun
 ```
 
 ### 2.6 Fine-Tuning (2-Phase Strategy)
@@ -156,25 +144,23 @@ Model kita (`CropYieldLSTM`) punya 2 bagian:
 
 **Phase 2 (50 epoch): Unfreeze semua, fine-tune full**
 - Semua layer dilatih dengan lr=1e-4 (sangat kecil)
-- **Kenapa:** Sekarang head sudah stabil → aman untuk menyesuaikan LSTM secara halus ke pola data ASEAN (iklim tropis, pola NDVI berbeda)
+- **Kenapa:** Sekarang head sudah stabil → aman untuk menyesuaikan LSTM secara halus ke pola data Indonesia (iklim tropis, pola NDVI berbeda)
 
 **Hasil nyata fine-tuning di proyek ini:**
 
 | Negara | Tanpa fine-tune (from scratch) | Dengan fine-tune (transfer) | Keuntungan |
 |--------|-------------------------------|----------------------------|-----------|
 | IDN | R²=0.000 | R²=**0.574** | +0.574 🎉 |
-| VNM | R²=-0.056 | R²=**0.048** | +0.104 ✓ |
-| THA | R²=-0.490 | R²=-2.726 | -2.236 ⚠️ overfit |
 
 IDN mendapat manfaat terbesar karena datanya paling sedikit (128 sampel training) — tanpa pretrained weights, model tidak cukup data untuk belajar apapun.
 
 ### 2.7 Domain Adaptation & DANN
 
-**Masalah:** USA (4 musim) vs ASEAN (2 musim) → pola NDVI sepanjang tahun sangat berbeda:
+**Masalah:** USA (4 musim) vs Indonesia (2 musim) → pola NDVI sepanjang tahun sangat berbeda:
 - USA: NDVI naik tajam di spring, puncak di summer, turun di fall (kurva lonceng)
-- Vietnam: NDVI relatif stabil sepanjang tahun (tropical — selalu hijau)
+- Indonesia: NDVI relatif stabil sepanjang tahun (tropical — selalu hijau)
 
-**Solusi: DANN** — model belajar menghasilkan fitur yang tidak bisa dibedakan apakah dari USA atau ASEAN. **Belum diimplementasi — rencana fase berikutnya.**
+**Solusi: DANN** — model belajar menghasilkan fitur yang tidak bisa dibedakan apakah dari USA atau Indonesia. **Belum diimplementasi — rencana fase berikutnya.**
 
 ### 2.8 Remote Sensing & MODIS
 
@@ -188,18 +174,18 @@ IDN mendapat manfaat terbesar karena datanya paling sedikit (128 sampel training
 
 **Band MODIS yang kita pakai (10 fitur):**
 
-| Nama Kolom | Band Fisik | Kegunaan |
-|-----------|-----------|---------|
-| `sur_refl_b01` | Red (merah, 620-670nm) | Tanaman menyerap cahaya merah → rendah = sehat |
-| `sur_refl_b02` | NIR (near-infrared, 841-876nm) | Tanaman memantulkan NIR → tinggi = sehat |
-| `sur_refl_b03` | Blue (459-479nm) | Koreksi atmosfer |
-| `sur_refl_b04` | Green (545-565nm) | Referensi hijau |
-| `sur_refl_b05` | SWIR 1 (1230-1250nm) | Kelembaban tanah/daun |
-| `sur_refl_b06` | SWIR 2 (1628-1652nm) | Kelembaban |
-| `sur_refl_b07` | SWIR 3 (2105-2155nm) | Kelembaban |
-| `ndvi` | Indeks turunan | Indikator kehijauan tanaman |
-| `LST_Day_1km` | Suhu permukaan siang | Stres panas tanaman |
-| `LST_Night_1km` | Suhu permukaan malam | Suhu baseline |
+| Nama Kolom      | Band Fisik                     | Kegunaan                                       |
+| --------------- | ------------------------------ | ---------------------------------------------- |
+| `sur_refl_b01`  | Red (merah, 620-670nm)         | Tanaman menyerap cahaya merah → rendah = sehat |
+| `sur_refl_b02`  | NIR (near-infrared, 841-876nm) | Tanaman memantulkan NIR → tinggi = sehat       |
+| `sur_refl_b03`  | Blue (459-479nm)               | Koreksi atmosfer                               |
+| `sur_refl_b04`  | Green (545-565nm)              | Referensi hijau                                |
+| `sur_refl_b05`  | SWIR 1 (1230-1250nm)           | Kelembaban tanah/daun                          |
+| `sur_refl_b06`  | SWIR 2 (1628-1652nm)           | Kelembaban                                     |
+| `sur_refl_b07`  | SWIR 3 (2105-2155nm)           | Kelembaban                                     |
+| `ndvi`          | Indeks turunan                 | Indikator kehijauan tanaman                    |
+| `LST_Day_1km`   | Suhu permukaan siang           | Stres panas tanaman                            |
+| `LST_Night_1km` | Suhu permukaan malam           | Suhu baseline                                  |
 
 **NDVI:** `NDVI = (NIR - Red) / (NIR + Red)`, rentang -1 sampai +1. > 0.3 = ada vegetasi sehat.
 
@@ -209,6 +195,8 @@ IDN mendapat manfaat terbesar karena datanya paling sedikit (128 sampel training
 1. Ambil gambar MODIS per wilayah (county/provinsi) per 8-hari
 2. Hitung rata-rata nilai band dalam batas wilayah (zonal statistics)
 3. Export ke Google Drive sebagai CSV
+
+
 
 ---
 
@@ -220,12 +208,9 @@ IDN mendapat manfaat terbesar karena datanya paling sedikit (128 sampel training
 |--------|-------|--------|-------|-----------------|--------|
 | USA | County (2.280) | USDA NASS | 2003-2023 | 41.349 | ✅ Lengkap |
 | Indonesia | Provinsi (33/38) | BPS | 2020-2024 | 172 | ✅ (5 provinsi hilang — Papua baru) |
-| Vietnam | Provinsi (62/63) | GSO | 2003-2023 | 1.804 | ✅ (Ha Tay dibuang) |
-| Thailand | Provinsi (43) | OAE | 2021-2023 | 126 | ✅ (hanya 3 tahun tersedia) |
+| Indonesia | Kabupaten (~514) | BPS | 2003-2025 | TBD | ⚠️ MODIS perlu re-ekstrak ADM2 |
 
 **Kenapa Indonesia cuma 2020-2024?** BPS mengubah metodologi survei ke KSA (berbasis satelit) mulai 2020. Data pre-2020 pakai "eye estimate" yang tidak sebanding — mencampurnya akan bikin model bingung.
-
-**Kenapa Ha Tay (Vietnam) dibuang?** GAUL 2015 masih punya Ha Tay sebagai provinsi, tapi Vietnam sudah menggabungkannya ke Ha Noi sejak 2008. Data yield GSO tidak punya Ha Tay terpisah → tidak bisa di-join → dibuang.
 
 ### 3.2 MODIS Data (Satellite) — Status Final
 
@@ -235,14 +220,11 @@ Semua 50 GEE export tasks berhasil disubmit dan didownload:
 |--------|-------------|-------------|--------|
 | USA | `modis_usa_YYYY.csv` | 21 files (2003-2023) | ✅ Downloaded |
 | Indonesia | `modis_idn_YYYY.csv` | 5 files (2020-2024) | ✅ Downloaded |
-| Vietnam | `modis_vnm_YYYY.csv` | 21 files (2003-2023) | ✅ Downloaded |
-| Thailand | `modis_tha_YYYY.csv` | 3 files (2021-2023) | ✅ Downloaded |
+| Indonesia | `modis_idn_YYYY.csv` | 5 files (2020-2024) current, re-run needed 2003-2019 | ⚠️ Perlu re-run GEE ADM2 |
 
-Setelah merge: 4 file `.npz` di `data/processed/modis/` **(v2, cropland-masked)**:
-- `usa_modis.npz`: 32.296 sampel × 46 timesteps × 10 fitur
-- `idn_modis.npz`: 162 sampel × 46 timesteps × 10 fitur
-- `vnm_modis.npz`: 1.315 sampel × 46 timesteps × 10 fitur
-- `tha_modis.npz`: 126 sampel × 46 timesteps × 10 fitur
+Setelah merge: 2 file `.npz` aktif di `data/processed/modis/` **(v2, cropland-masked)**:
+- `usa_modis.npz`: 33.962 sampel × 46 timesteps × 10 fitur ✅
+- `idn_modis.npz`: TBD — menunggu re-ekstrak GEE ADM2 kabupaten level
 
 **Catatan v2:** Re-extraction dengan MCD12Q1 class 12 mask (hanya pixel pertanian). File USA menyusut dari ~33MB → ~28MB per tahun, membuktikan mask aktif.
 
@@ -261,8 +243,7 @@ Setelah merge: 4 file `.npz` di `data/processed/modis/` **(v2, cropland-masked)*
     ├── Mapping nama wilayah:
     │     USA: GEOID 5-digit (state_fips + county_fips)
     │     IDN: GAUL ADM1_NAME → "IDN-XX" (33 provinsi hardcoded)
-    │     VNM: normalisasi nama + buang Ha Tay
-    │     THA: koreksi ejaan (9 nama berbeda di GAUL vs OAE)
+    │     IDN: GAUL ADM2_NAME → BPS kabupaten code
     │
     ├── Hilangkan EVI dari fitur (overflow bug)
     ├── Isi NaN per (region, year, fitur):
@@ -273,7 +254,7 @@ Setelah merge: 4 file `.npz` di `data/processed/modis/` **(v2, cropland-masked)*
     ├── Join dengan yield lookup
     └── Simpan sebagai .npz
     ↓
-4 file .npz: usa_modis.npz, idn_modis.npz, vnm_modis.npz, tha_modis.npz
+2 file .npz: usa_modis.npz, idn_modis.npz (kabupaten, pending re-ekstrak)
 ```
 
 ### 4.2 Format Tensor (NPZ)
@@ -298,9 +279,8 @@ x_normalized = (x - mean_train) / std_train
 
 ```
 USA: Train 2003-2020 | Val 2021-2022 | Test 2023
-IDN: Train 2020-2022 | Val (kosong) | Test 2023-2024
-VNM: Train 2003-2020 | Val 2021-2022 | Test 2023
-THA: Train 2021 | Val (kosong) | Test 2022-2023
+IDN: Train 2020-2022 | Val (kosong)  | Test 2023-2024
+IDN: Train 2003–2021 | Val 2022–2023 | Test 2024–2025
 ```
 
 **Kenapa split by year, bukan random?** Karena kita prediksi masa depan. Model harus diuji pada tahun yang belum pernah dilihat saat training. Kalau random, model bisa "contek" informasi dari tahun 2023 saat latihan dengan data 2023-lainnya.
@@ -450,11 +430,11 @@ drive.mount('/content/drive')
 ### Apa yang Sudah Selesai
 
 ```
-✅ Download + clean yield data USA, IDN, VNM, THA
-✅ GEE v1: 50 tasks submitted & downloaded (tanpa cropland mask)
-✅ GEE v2: 50 tasks re-submitted & downloaded (dengan MCD12Q1 class 12 mask)
-✅ merge_modis.py — build 4 .npz tensors (v2)
-✅ dataset.py — filter zero-yield (y > 0.1) ditambahkan
+✅ Download + clean yield data USA (33.962 rows, 2.226 counties)
+✅ Download yield data IDN kabupaten 2003–2022 (BDSP)
+✅ GEE v2: 21 tasks USA submitted & downloaded (dengan MCD12Q1 class 12 mask)
+✅ merge_modis.py — build usa_modis.npz (33.962, 46, 10)
+✅ src/data/04_dataset.py — PyTorch Dataset + DataLoader + z-score normalization
 ✅ src/models/cnn_lstm.py — CropYieldLSTM + CropYieldCNNLSTM
 ✅ experiments/configs/usa_lstm.yaml — config terbaik
 ✅ src/training/train.py — full training loop
@@ -487,9 +467,8 @@ drive.mount('/content/drive')
 
 ---
 
-## 9. Hasil Investigasi untuk Supervisor
+## 9. Hasil Investigasi mimggu ini 
 
-Sebelum meeting supervisor, kita jalankan 5 investigasi (tanpa mengubah pipeline):
 
 ### 9.1 Kenapa Sample USA Hilang? (Sample Loss Analysis)
 
@@ -517,30 +496,15 @@ Ditemukan **206 sampel USA dengan yield = 0.0 ton/ha** di tensor. Ini bukan nila
 
 Kita ukur seberapa berbeda distribusi fitur MODIS:
 
-| Metrik | USA vs IDN | USA vs VNM | USA vs THA |
-|--------|-----------|-----------|-----------|
-| NDVI mean | 0.45 vs 0.59 | 0.45 vs 0.52 | 0.45 vs 0.48 |
-| LST range | lebar (30°C) | sempit (5-10°C) | sempit |
-| Wasserstein dist (NDVI) | 0.082 | 0.045 | 0.032 |
+| Metrik | USA vs IDN |
+|--------|-----------|
+| NDVI mean | 0.45 vs 0.59 |
+| LST range | lebar (30°C) vs sempit (10°C) |
+| Wasserstein dist (NDVI) | 0.082 |
 
-**Kesimpulan:** USA dan ASEAN memang beda jauh — khususnya pola temporal NDVI (USA: kurva lonceng musiman; ASEAN: relatif datar sepanjang tahun). Ini mendukung perlunya DANN (H3).
+**Kesimpulan:** USA dan Indonesia beda jauh — USA punya pola NDVI kurva lonceng musiman (spring naik → summer puncak → fall turun), Indonesia relatif datar (iklim tropis). 
 
-### 9.4 Vietnam: Koreksi Hasil (Hasil Nyata ≠ Hasil Lama)
-
-**⚠️ Koreksi penting:** Hasil VNM yang sebelumnya ditampilkan (negative transfer ΔR²=−0.094) adalah **data salah** — berasal dari file `transfer_results.csv` smoke test Mac yang ter-commit ke git, bukan dari training GPU sesungguhnya.
-
-**Hasil nyata (Kaggle T4, cropland-masked v2):**
-
-| Model | R² | RMSE | ΔR² vs From-Scratch |
-|-------|-----|------|---------------------|
-| From-Scratch | -0.056 | 1.377 t/ha | — |
-| Transfer | **+0.048** | 1.307 t/ha | **+0.104 (positif!)** |
-
-**Temuan revisi:** Transfer learning untuk VNM **sedikit membantu** (+0.104), bukan merugikan. H2 (negative transfer) tidak terkonfirmasi untuk VNM dengan data cropland-masked v2.
-
-**Pelajaran:** Selalu verifikasi hasil dari GPU sesungguhnya, bukan dari smoke test yang ter-commit ke git.
-
-### 9.5 Estimasi Dampak Cropland Masking
+### 9.4 Estimasi Dampak Cropland Masking
 
 Model saat ini rata-rata MODIS atas **seluruh** area county/provinsi, termasuk hutan, kota, sawah non-jagung, dll. Dengan cropland mask:
 
@@ -548,7 +512,6 @@ Model saat ini rata-rata MODIS atas **seluruh** area county/provinsi, termasuk h
 |---------|--------------------------|-----------|
 | Iowa (USA corn belt) | ~35% | 2.8× sinyal lebih kuat |
 | East Java (IDN) | ~15-25% | 4-7× lebih kuat |
-| Vietnam Tengah | ~10-20% | 5-10× lebih kuat |
 
 **Prediksi:** Dengan cropland mask, R² USA diperkirakan naik dari 0.39 → **0.60-0.70**. Ini prioritas utama untuk paper final.
 
@@ -607,10 +570,8 @@ Model saat ini rata-rata MODIS atas **seluruh** area county/provinsi, termasuk h
 | **Checkpoint** | File tersimpan berisi bobot model terbaik selama training |
 | **CNN** | Convolutional Neural Network — untuk data spasial (gambar/grid) |
 | **Colab** | Google Colaboratory — Jupyter notebook gratis dengan GPU/TPU |
-| **DANN** | Domain-Adversarial Neural Network — metode domain adaptation |
 | **Data Leakage** | Kebocoran informasi dari test/val ke training — membuat evaluasi tidak valid |
 | **Dense Layer** | Fully-connected layer — setiap neuron terhubung ke semua neuron sebelumnya |
-| **Domain Adaptation** | Teknik agar model bekerja di domain target yang berbeda distribusinya |
 | **Domain Gap** | Perbedaan statistik antara source (USA) dan target (ASEAN) |
 | **Dropout** | Teknik regularisasi — random "mematikan" neuron saat training untuk cegah overfitting |
 | **Early Stopping** | Hentikan training saat val loss tidak membaik selama N epoch (patience) |
@@ -624,7 +585,6 @@ Model saat ini rata-rata MODIS atas **seluruh** area county/provinsi, termasuk h
 | **GAUL** | Global Administrative Unit Layers — batas wilayah dari FAO, dipakai di GEE |
 | **GEE** | Google Earth Engine — platform cloud untuk analisis citra satelit |
 | **GEOID** | ID unik county USA: 5-digit gabungan state_fips + county_fips |
-| **GSO** | General Statistics Office — sumber data yield Vietnam |
 | **Hidden Size** | Jumlah neuron dalam hidden layer LSTM (kita: 256) |
 | **Hyperparameter** | Parameter yang diset manual sebelum training (bukan dipelajari model) |
 | **KSA** | Kerangka Sampel Area — metodologi BPS berbasis satelit untuk survei pertanian, mulai 2020 |
@@ -640,7 +600,6 @@ Model saat ini rata-rata MODIS atas **seluruh** area county/provinsi, termasuk h
 | **Negative Transfer** | Transfer learning yang justru memperburuk hasil |
 | **NDVI** | Normalized Difference Vegetation Index — indikator kehijauan. `(NIR-Red)/(NIR+Red)` |
 | **NPZ** | Format file NumPy berisi banyak array — seperti ZIP tapi untuk array |
-| **OAE** | Office of Agricultural Economics — sumber data yield Thailand |
 | **Optimizer** | Algoritma yang memperbarui bobot berdasarkan gradient |
 | **Overfitting** | Model "hafal" data training, tapi jelek di data baru |
 | **Pretrained** | Model yang sudah dilatih sebelumnya (di USA) — siap untuk fine-tuning |
@@ -649,7 +608,7 @@ Model saat ini rata-rata MODIS atas **seluruh** area county/provinsi, termasuk h
 | **Regularisasi** | Teknik mencegah overfitting (dropout, weight decay, early stopping) |
 | **Remote Sensing** | Mengamati objek dari jauh (satelit) tanpa kontak langsung |
 | **Source Domain** | Domain asal untuk transfer learning — USA |
-| **Target Domain** | Domain tujuan transfer learning — Indonesia/Vietnam/Thailand |
+| **Target Domain** | Domain tujuan transfer learning — Indonesia |
 | **Tensor** | Array multidimensi — input model kita: (N_samples, 46 timesteps, 10 fitur) |
 | **Timestep** | Satu langkah waktu. Di proyek ini: 1 timestep = 8 hari |
 | **Transfer Learning** | Menggunakan model yang dilatih di source untuk bantu belajar di target |
@@ -679,4 +638,31 @@ Model saat ini rata-rata MODIS atas **seluruh** area county/provinsi, termasuk h
 
 ---
 
-*Dokumen ini akan di-update seiring berjalannya proyek. Terakhir diupdate: 8 Mei 2026 — hasil nyata Kaggle T4 GPU ditambahkan, koreksi hasil VNM.*
+*Dokumen ini akan di-update seiring berjalannya proyek. Terakhir diupdate: 8 Mei 2026.*
+
+---
+
+## 12. Datasets & References
+
+### Datasets
+- **USA Yield**: https://quickstats.nass.usda.gov/ (USDA NASS)
+- **Indonesia Yield**: https://www.bps.go.id/
+- **Boundaries**: https://gadm.org/
+- **MODIS**: GEE assets `MODIS/061/MOD09A1`, `MODIS/061/MYD11A2`
+- **Cropland Mask**: MapSPAM 2020 or MODIS LC
+
+
+
+
+
+
+
+### Key Papers
+1. **You et al. 2017** "Deep Gaussian Process for Crop Yield Prediction Based on Remote Sensing Data" — AAAI (foundational)
+2. **Wang et al. 2018** "Deep Transfer Learning for Crop Yield Prediction with Remote Sensing Data" — COMPASS
+3. **Khaki et al. 2021** "Simultaneous corn and soybean yield prediction from remote sensing data using deep transfer learning" — Sci. Rep.
+4. **Zhang et al. 2025** "Transfer learning for improved crop yield predictions in a cross-scale pathway" — Remote Sensing of Environment
+
+### Reference Code
+- **Primary**: https://github.com/gabrieltseng/pycrop-yield-prediction (PyTorch)
+- **Secondary**: https://github.com/AnnaXWang/deep-transfer-learning-crop-prediction (TensorFlow, for reference)
