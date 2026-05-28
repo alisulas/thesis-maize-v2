@@ -1,6 +1,6 @@
 ---
 name: pytorch-training
-description: Use this skill whenever the task involves writing PyTorch code for the thesis project, including model architecture (CNN-LSTM, Transformer), training loops, fine-tuning, transfer learning, domain adaptation (DANN), or experiment configuration. Triggers include any mention of PyTorch, training loop, fine-tuning, freeze layers, learning rate scheduling, checkpointing, DANN, domain adaptation, or model architecture. Use this skill before writing any model or training code. Do NOT use for general PyTorch tutorials or unrelated PyTorch projects.
+description: Use this skill whenever the task involves writing PyTorch code for the thesis project, including model architecture (CNN-LSTM, Transformer), training loops, fine-tuning, transfer learning, or experiment configuration. Triggers include any mention of PyTorch, training loop, fine-tuning, freeze layers, learning rate scheduling, checkpointing, or model architecture. Use this skill before writing any model or training code. Do NOT use for general PyTorch tutorials or unrelated PyTorch projects.
 ---
 
 # PyTorch Training Skill
@@ -282,7 +282,7 @@ class GradientReversalFunction(Function):
 
 
 class DANNModel(nn.Module):
-    """CNN-LSTM with domain classifier branch for adversarial domain adaptation."""
+    """CNN-LSTM with domain classifier branch for adversarial"""
     def __init__(self, base_model: HistogramCNNLSTM, n_domains: int = 2):
         super().__init__()
         self.feature_extractor = nn.Sequential(base_model.cnn, base_model.lstm)
@@ -377,7 +377,6 @@ Use this template for ALL runs to enable filtering:
 Examples:
 - `usa_usa_baseline_42_20260112` (USA from-scratch baseline)
 - `usa_indonesia_finetune_42_20260205` (Vanilla fine-tune to Indonesia)
-- `usa_indonesia_dann_42_20260220` (DANN domain adaptation to Indonesia)
 - `usa_asean_finetune_42_20260301` (Fine-tune to all ASEAN combined)
 
 ## Common Pitfalls & Solutions

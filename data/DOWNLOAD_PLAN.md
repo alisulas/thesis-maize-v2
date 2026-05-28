@@ -45,7 +45,7 @@ key              = <YOUR_API_KEY>
 | `Value` | `yield_bu_acre` | **Unit: BU / ACRE** (not tonnes/ha!) |
 | — | `yield_ton_ha` | Computed: × 0.0628 (1 bu/acre = 62.77 kg/ha) |
 
-> **Unit conversion note**: NASS reports in bushels/acre. For comparison with ASEAN data (tonnes/ha), convert: `yield_ton_ha = yield_bu_acre × 0.06277`. Keep both columns in raw file.
+
 
 ### Output file
 ```
@@ -59,93 +59,8 @@ data/raw/usa/
 
 ---
 
+
 ## Indonesia — BPS (Badan Pusat Statistik)
-
-### Why not BPS API?
-BPS does have an API (`webapi.bps.go.id`) but it requires:
-1. Registering for an API key
-2. Discovering the variable ID for jagung (corn) production — which requires calling multiple metadata endpoints first
-3. The dynamic data endpoint structure is underdocumented for agricultural commodities
-
-**Decision**: Manual download is more reliable for first-pass data collection. Script BPS API only if we need to refresh data frequently.
-
-### Manual Download Method
-BPS publishes static tables for jagung production by province. Two options:
-
-**Option A — BPS Website Static Tables (preferred)**
-- URL: `https://www.bps.go.id/en/statistics-table` → search "corn production by province"
-- Download as XLS/XLSX, one table per ~5 years, manual cleanup needed
-- Typical columns: Province Name, [year1], [year2], ..., [yearN] in wide format
-- Coverage: Usually 2000–present, but early years (2003–2005) may need separate table
-
-**Option B — FAOSTAT (fallback)**
-- FAOSTAT tracks Indonesia national-level data, NOT province-level
-- Use only if BPS province-level data is unavailable for some years
-
-**Recommended approach for today**: Download from BPS website (XLS), convert manually, validate against FAOSTAT national totals.
-
-### Fields in BPS data
-| BPS column | Our target field | Notes |
-|-----------|-----------------|-------|
-| Province name (Indonesian) | `region_name` | Need mapping to English + BPS province code |
-| `kode_provinsi` | `region_id` | BPS 2-digit province code |
-| Year (wide format) | `year` | Needs reshape wide→long |
-| Production (1000 ton) | `production_ton` | Multiply by 1000 to get tonnes |
-| Planted area (1000 ha) | `planted_ha` | Same unit conversion |
-| — | `yield_ton_ha` | Computed: `production_ton / planted_ha` |
-
-> **BPS quirk**: Data is often in wide format (provinces as rows, years as columns). Will need `pd.melt()` to reshape.
-
-> **Province count**: 34 provinces (post-2013 split). Pre-2013 data uses 33 provinces (Kalimantan Utara didn't exist). Handle split carefully.
-
-### Output file
-```
-data/raw/indonesia/
-  bps_corn_province_production_2003_2023.xlsx   ← raw BPS download (DO NOT MODIFY)
-  bps_corn_province_planted_2003_2023.xlsx      ← planted area from BPS
-  bps_province_codes.csv                         ← BPS province code → name mapping
-```
-
-### Estimated records
-34 provinces × 21 years = 714 rows. Small dataset — fast to validate manually.
-
----
-
-## Vietnam — GSO (General Statistics Office)
-
-### API Situation
-GSO (`gso.gov.vn`) has no public API. Website is browsable but requires manual XLS download. FAOSTAT is a better programmatic source for Vietnam national data, but for **province-level** data, GSO is the only official source.
-
-### Recommended approach
-1. Try FAOSTAT API for province-level Vietnam data (FAOSTAT does have sub-national data for some countries)
-2. If unavailable: manual download from GSO website
-3. Fallback: Contact GSO directly or use published research datasets
-
-> **Risk**: Vietnam province-level maize data coverage may be sparse before 2010. Flag this as a potential scope limitation.
-
-### Output file
-```
-data/raw/vietnam/
-  gso_corn_province_yield_2003_2023.xlsx   ← raw GSO download
-```
-
----
-
-## Thailand — OAE (Office of Agricultural Economics)
-
-### API Situation
-OAE (`oae.go.th`) has no public API. Data is published as PDF reports or XLS per year.
-
-### Recommended approach
-1. Try FAOSTAT API for province-level Thailand data
-2. If unavailable: download OAE annual reports (XLS format, one file per year → concatenate)
-3. Thailand has 77 provinces, but maize production concentrated in ~20 northern provinces
-
-### Output file
-```
-data/raw/thailand/
-  oae_corn_province_yield_2003_2023.xlsx   ← raw OAE download (or per-year files)
-```
 
 ---
 
@@ -169,37 +84,6 @@ data_source     str    "NASS" | "BPS" | "GSO" | "OAE" | "FAOSTAT"
 
 ---
 
-## Blockers & Action Items
-
-### Before scripting USA:
-- [ ] **Register NASS API key** at `https://quickstats.nass.usda.gov/api` — takes 5 min, key arrives by email
-- [ ] Confirm email for registration: sulashidayat@gmail.com (or institutional email?)
-
-### Before downloading Indonesia:
-- [ ] Open BPS website, find corn production table: `https://www.bps.go.id/en/statistics-table`
-- [ ] Check if single XLS covers 2003–2023 or need multiple downloads
-- [ ] Confirm: does BPS have separate table for "planted area" vs "production"? (Need both for yield calculation)
-
-### Vietnam & Thailand (next session):
-- [ ] Test FAOSTAT API for sub-national data coverage
-- [ ] If FAOSTAT has no province data: manual download from GSO/OAE
-
----
-
-## Time Estimate — Today's Session
-
-| Task | Est. Time |
-|------|-----------|
-| Register NASS API key | 5 min |
-| Write + test USA download script | 30 min |
-| Run download, validate output | 15 min |
-| Manual BPS Indonesia download + format check | 30 min |
-| Write Indonesia cleaning script | 30 min |
-| Validate Indonesia data | 15 min |
-| **Total** | **~2h 15 min** |
-
----
-
 ## Data Quality Flags to Check After Download (data-validation skill)
 
 1. **USA**: Missing counties (expected — many counties don't grow corn)
@@ -207,7 +91,3 @@ data_source     str    "NASS" | "BPS" | "GSO" | "OAE" | "FAOSTAT"
 3. **Indonesia**: Pre-2013 province split (Kalimantan Utara missing from older data)
 4. **All**: yield_ton_ha range sanity check — maize typically 1–15 t/ha globally
 5. **All**: Cross-validate national total against FAOSTAT (`production_ton.sum()` by year should match FAOSTAT ±5%)
-
----
-
-*Next step: Approve this plan → Claude Code writes `src/data/download_usa.py` first.*

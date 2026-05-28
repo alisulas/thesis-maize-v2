@@ -19,7 +19,7 @@ Rekomendasi sekarang: buka 02_gee_extraction.ipynb dulu, bukan extract_modis_usa
 
 
 
-Pertanyaannya: **Apakah pengetahuan dari Indonesia bisa "ditransfer" untuk bantu nebak di Thailand? Atau malah bikin bingung karena kondisinya beda?**
+Pertanyaannya: **Apakah pengetahuan dari USA bisa "ditransfer" untuk bantu nebak di Indonesia? Atau malah bikin bingung karena kondisi iklimnya beda?**
 
 ### Versi teknis
 
@@ -416,12 +416,7 @@ drive.mount('/content/drive')
 | USA LSTM (baseline) | **0.4416** | 1.656 t/ha | Best epoch 41, early stop ep61 |
 | IDN Transfer | **0.574** | 0.763 t/ha | ΔR²=+0.574 vs scratch |
 | IDN From-Scratch | 0.000 | 1.170 t/ha | — |
-| VNM Transfer | **0.048** | 1.307 t/ha | ΔR²=+0.104 vs scratch |
-| VNM From-Scratch | -0.056 | 1.377 t/ha | — |
-| THA Transfer | -2.726 | 0.831 t/ha | Overfitting — no val set, 3 tahun |
-| THA From-Scratch | -0.490 | 0.526 t/ha | — |
-
-**Target USA R² ≥ 0.6 belum tercapai** (0.4416). Kemungkinan penyebab: early stopping terlalu cepat (epoch 41 dari 150), atau hyperparameter perlu tuning. THA butuh perbaikan (kurangi epoch fine-tuning).
+**Target USA R² ≥ 0.6 belum tercapai** (0.4416). Kemungkinan penyebab: early stopping terlalu cepat (epoch 41 dari 150), atau hyperparameter perlu tuning.
 
 ---
 
@@ -441,7 +436,7 @@ drive.mount('/content/drive')
 ✅ src/transfer/finetune.py — 2-phase fine-tuning
 ✅ src/analysis/supervisor_analysis.py — 5 investigasi
 ✅ Training di Kaggle T4 GPU: USA R²=0.4416
-✅ Fine-tuning ASEAN: IDN R²=0.574, VNM R²=0.048
+✅ Fine-tuning IDN: R²=0.574 (transfer) vs 0.000 (scratch)
 ✅ Pretrained checkpoint: experiments/checkpoints/usa_lstm/best_model.pt
 ✅ Memory files, CLAUDE.md decision log, docs/knowledge.md
 ✅ Semua di-commit ke GitHub (branch: dev)
@@ -450,11 +445,11 @@ drive.mount('/content/drive')
 ### Yang Belum Selesai
 
 ```
-⬜ Fix THA overfitting (kurangi epoch fine-tuning, tambah regularisasi)  ← PRIORITAS 1
+⬜ Jalankan training USA penuh (belum dijalankan di setup baru)           ← PRIORITAS 1
+⬜ Fix IDN yield pipeline + rebuild idn_modis.npz di kabupaten level      ← PRIORITAS 2
+⬜ Fine-tune IDN dengan data kabupaten baru                                ← PRIORITAS 3
 ⬜ Implementasi DANN (src/models/dann.py)                                 ← untuk H3
-⬜ Download IDN pre-2020 (sebelum KSA)                                    ← nice to have
 ⬜ USA R² target ≥ 0.6 belum tercapai (saat ini 0.4416)                  ← hyperparameter tuning
-⬜ Notebook Kaggle: hapus Cell 1 (numpy downgrade), perbaiki robustness
 ```
 
 ### Platform Training
@@ -540,18 +535,12 @@ Model saat ini rata-rata MODIS atas **seluruh** area county/provinsi, termasuk h
 
 **Rencana:** Jalankan tuning di Kaggle di sesi berikutnya.
 
-### 10.4 ⚠️ AKTIF: THA Overfitting Parah (R²=-2.726)
-
-**Masalah:** THA hanya 84 training samples (2 tahun), tidak ada validation set. Fine-tuning 70 epoch → overfit sempurna ke training, gagal total di test.
-
-**Solusi:** Batasi fine-tuning THA ke 10-20 epoch total, atau tambahkan dropout lebih besar. Perlu kode khusus per-country di `finetune.py`.
-
-### 10.5 ⬜ PENDING: DANN untuk H3
+### 10.4 ⬜ PENDING: DANN untuk H3
 
 **Masalah:** H3 belum bisa diuji tanpa implementasi DANN.
 **Solusi:** `src/models/dann.py` — referensi: Ganin & Lempitsky 2015. **Fase berikutnya.**
 
-### 10.6 ⬜ PENDING: IDN Pre-2020 Data
+### 10.5 ⬜ PENDING: IDN Pre-2003 Data
 
 **Masalah:** Hanya 5 tahun IDN (2020-2024). Pre-2020 BPS pakai metodologi berbeda.
 **Solusi:** Download BPS pre-2020 terpisah, normalisasi cross-methodology. Future work.

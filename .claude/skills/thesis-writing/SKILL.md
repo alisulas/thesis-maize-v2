@@ -46,7 +46,7 @@ Structure (1 sentence each):
 4. **Method**: We compare from-scratch baselines, vanilla fine-tuning, and DANN using MODIS satellite data, 2003-2023.
 5. **Results**: We achieve [X% improvement / specific findings about domain gap].
 6. **Significance**: Findings inform applicability of transfer learning across climate zones.
-7. **Keywords**: 5-7 keywords (transfer learning, deep learning, crop yield prediction, remote sensing, MODIS, domain adaptation, ASEAN).
+7. **Keywords**: 5-7 keywords (transfer learning, deep learning, crop yield prediction, remote sensing, MODIS, ASEAN).
 
 ### Introduction Pattern
 
@@ -100,7 +100,6 @@ Lead with the **headline finding**, then drill down:
 **Subsection 2**: ASEAN From-Scratch Baselines (establish target difficulty)
 **Subsection 3**: Transfer Learning Performance (main results table)
 **Subsection 4**: Per-Country Analysis (which country benefits most/least)
-**Subsection 5**: Ablation Studies (sample size, domain adaptation strength)
 **Subsection 6**: Failure Cases & Limitations
 
 ### Discussion Section Pattern
@@ -221,7 +220,7 @@ Don't repeat results. Address:
 \end{abstract}
 
 \begin{IEEEkeywords}
-Transfer learning, deep learning, crop yield prediction, remote sensing, MODIS, domain adaptation, Southeast Asia
+Transfer learning, deep learning, crop yield prediction, remote sensing, MODIS, Southeast Asia
 \end{IEEEkeywords}
 
 \section{Introduction}

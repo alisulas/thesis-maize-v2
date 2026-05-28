@@ -27,13 +27,7 @@ data/processed/**/*.npz
 # Manually downloaded files stay local (user downloads these separately)
 data/Manually\ Download/
 
-# Model checkpoints
-experiments/checkpoints/*
-!experiments/checkpoints/.gitkeep
 
-# Experiment logs (keep small CSVs only)
-experiments/logs/*.log
-wandb/
 
 # Notebook outputs
 .ipynb_checkpoints/
